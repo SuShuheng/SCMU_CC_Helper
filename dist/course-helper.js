@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 2.0.0
+ * @version 1.0.0
  * @description 专为中南民族大学学生设计的自动化课程注册助手
  *
  * Copyright (c) 2025 SuShuHeng
@@ -1092,7 +1092,7 @@
 
     // 显示版权信息和启动消息
     console.log(`
-🎓 中南民族大学自动选课助手 v2.0.0
+🎓 中南民族大学自动选课助手 v1.0.0
 👤 作者: SuShuHeng (https://github.com/sushuheng)
 📜 许可证: APACHE 2.0
 ⚠️  免责声明: 本项目仅用于学习目的，请遵守学校相关规定
