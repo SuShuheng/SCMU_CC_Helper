@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.0
+ * @version 1.0.1
  * @description 专为中南民族大学学生设计的自动化课程注册助手UI控制模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -27,16 +27,266 @@
 import { CONFIG } from './config.js';
 import { courseManager } from './course-registration.js';
 
+// UI状态常量
+const UI_STATES = {
+    FLOATING_BUTTON: 'floating_button',
+    FULL_PANEL: 'full_panel',
+    MINIMIZED_STATUS: 'minimized_status'
+};
+
 /**
  * 用户界面控制器类
  */
 class UIController {
     constructor() {
+        // 现有属性
         this.panel = null;
         this.container = null;
         this.startButton = null;
         this.stopButton = null;
         this.addButton = null;
+
+        // 新增状态管理属性
+        this.currentState = UI_STATES.FLOATING_BUTTON;
+        this.isSelectingCourses = false;
+        this.floatingButton = null;
+        this.minimizedPanel = null;
+        this.startTime = null;
+        this.statusUpdateInterval = null;
+    }
+
+    /**
+     * 隐藏所有UI状态
+     */
+    hideAllStates() {
+        if (this.panel) this.panel.style.display = 'none';
+        if (this.floatingButton) this.floatingButton.style.display = 'none';
+        if (this.minimizedPanel) this.minimizedPanel.style.display = 'none';
+    }
+
+    /**
+     * 转换到指定状态
+     * @param {string} newState - 新状态
+     */
+    transitionToState(newState) {
+        this.hideAllStates();
+
+        switch (newState) {
+            case UI_STATES.FLOATING_BUTTON:
+                this.showFloatingButton();
+                break;
+            case UI_STATES.FULL_PANEL:
+                this.showFullPanel();
+                break;
+            case UI_STATES.MINIMIZED_STATUS:
+                this.showMinimizedStatus();
+                break;
+        }
+
+        this.currentState = newState;
+    console.log(`${CONFIG.LOG.LOG_PREFIX} UI状态转换: ${newState}`);
+    }
+
+    /**
+     * 循环UI状态
+     */
+    cycleUIState() {
+        if (this.isSelectingCourses) {
+            // 3状态循环: 主面板 → 迷你面板 → 悬浮按钮 → 主面板
+            switch (this.currentState) {
+                case UI_STATES.FULL_PANEL:
+                    this.transitionToState(UI_STATES.MINIMIZED_STATUS);
+                    break;
+                case UI_STATES.MINIMIZED_STATUS:
+                    this.transitionToState(UI_STATES.FLOATING_BUTTON);
+                    break;
+                default:
+                    this.transitionToState(UI_STATES.FULL_PANEL);
+            }
+        } else {
+            // 2状态切换: 悬浮按钮 ↔ 主面板
+            this.transitionToState(
+                this.currentState === UI_STATES.FLOATING_BUTTON ?
+                    UI_STATES.FULL_PANEL :
+                    UI_STATES.FLOATING_BUTTON
+            );
+        }
+    }
+
+    /**
+     * 创建悬浮按钮
+     */
+    createFloatingButton() {
+        if (this.floatingButton) return;
+
+        this.floatingButton = document.createElement('div');
+        Object.assign(this.floatingButton.style, CONFIG.UI.FLOATING_BUTTON);
+        this.floatingButton.textContent = '抢课';
+        this.floatingButton.id = 'floating-button';
+
+        this.floatingButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 悬浮按钮被点击，当前状态: ${this.currentState}`);
+            this.cycleUIState();
+        });
+
+        document.body.appendChild(this.floatingButton);
+    }
+
+    /**
+     * 显示悬浮按钮
+     */
+    showFloatingButton() {
+        if (!this.floatingButton) {
+            this.createFloatingButton();
+        }
+        this.floatingButton.style.display = 'flex';
+    }
+
+    /**
+     * 显示完整面板
+     */
+    showFullPanel() {
+        if (!this.panel) {
+            this.createControlPanel();
+            // 设置面板ID
+            this.panel.id = 'course-registration-panel';
+            // 使面板可拖拽
+            this.makeDraggable(this.panel);
+            // CRITICAL: Add panel to DOM
+            document.body.appendChild(this.panel);
+        }
+        this.panel.style.display = 'block';
+    }
+
+    /**
+     * 创建迷你状态面板
+     */
+    createMinimizedStatusPanel() {
+        if (this.minimizedPanel) return;
+
+        this.minimizedPanel = document.createElement('div');
+        Object.assign(this.minimizedPanel.style, CONFIG.UI.MINIMIZED_PANEL);
+        this.minimizedPanel.id = 'minimized-status-panel';
+
+        // 标题
+        const title = document.createElement('div');
+        title.textContent = '抢课进行中';
+        title.style.cssText = 'font-weight: bold; margin-bottom: 10px; color: #28a745;';
+
+        // 状态容器
+        const statusContainer = document.createElement('div');
+        statusContainer.id = 'minimized-status-content';
+
+        // 停止按钮
+        const stopButton = document.createElement('button');
+        stopButton.textContent = '停止抢课';
+        stopButton.style.cssText = `
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        `;
+        stopButton.onclick = (e) => {
+            e.stopPropagation();
+            courseManager.stopLoop();
+        };
+
+        this.minimizedPanel.appendChild(title);
+        this.minimizedPanel.appendChild(statusContainer);
+        this.minimizedPanel.appendChild(stopButton);
+
+        this.minimizedPanel.addEventListener('click', () => {
+            this.cycleUIState();
+        });
+
+        document.body.appendChild(this.minimizedPanel);
+
+        // 开始状态更新定时器
+        this.startMinimizedStatusUpdates();
+    }
+
+    /**
+     * 显示迷你状态面板
+     */
+    showMinimizedStatus() {
+        if (!this.minimizedPanel) {
+            this.createMinimizedStatusPanel();
+        }
+        this.minimizedPanel.style.display = 'block';
+    }
+
+    /**
+     * 开始迷你面板状态更新
+     */
+    startMinimizedStatusUpdates() {
+        this.stopMinimizedStatusUpdates(); // 清除现有定时器
+        this.statusUpdateInterval = setInterval(() => {
+            this.updateMinimizedStatus();
+        }, 1000);
+    }
+
+    /**
+     * 停止迷你面板状态更新
+     */
+    stopMinimizedStatusUpdates() {
+        if (this.statusUpdateInterval) {
+            clearInterval(this.statusUpdateInterval);
+            this.statusUpdateInterval = null;
+        }
+    }
+
+    /**
+     * 更新迷你面板状态
+     */
+    updateMinimizedStatus() {
+        if (!this.minimizedPanel || this.currentState !== UI_STATES.MINIMIZED_STATUS) {
+            return;
+        }
+
+        const status = courseManager.getStatus();
+        const statusContainer = document.getElementById('minimized-status-content');
+
+        if (!statusContainer) return;
+
+        // 成功信息
+        const successInfo = document.createElement('div');
+        successInfo.innerHTML = `<strong>成功:</strong> ${status.successCount}/${status.totalCourses} 门课程`;
+        successInfo.style.marginBottom = '8px';
+
+        // 课程列表
+        const courseList = document.createElement('div');
+        courseList.style.maxHeight = '80px';
+        courseList.style.overflowY = 'auto';
+        courseList.style.fontSize = '11px';
+
+        status.courses.forEach(course => {
+            const courseItem = document.createElement('div');
+            courseItem.style.cssText = `
+                padding: 2px 0;
+                color: ${course.success ? '#28a745' : '#6c757d'};
+            `;
+            courseItem.textContent = `${course.id} ${course.success ? '✅' : '⏳'}`;
+            courseList.appendChild(courseItem);
+        });
+
+        // 运行时间
+        const runTime = this.startTime ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
+        const hours = Math.floor(runTime / 3600);
+        const minutes = Math.floor((runTime % 3600) / 60);
+        const seconds = runTime % 60;
+
+        const timeInfo = document.createElement('div');
+        timeInfo.innerHTML = `<strong>运行时间:</strong> ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        timeInfo.style.marginTop = '8px';
+
+        statusContainer.innerHTML = '';
+        statusContainer.appendChild(successInfo);
+        statusContainer.appendChild(courseList);
+        statusContainer.appendChild(timeInfo);
     }
 
     /**
@@ -191,16 +441,60 @@ class UIController {
         this.panel = document.createElement('div');
         Object.assign(this.panel.style, CONFIG.UI.PANEL_STYLE);
 
-        // 标题
+        // 创建标题栏容器
+        const titleBar = document.createElement('div');
+        titleBar.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 0 0 15px 0;
+            position: relative;
+        `;
+
+        // 标题文字
         const title = document.createElement('h3');
         title.textContent = '自动选课工具';
         title.style.cssText = `
-            margin: 0 0 15px 0;
+            margin: 0;
             color: #333;
             font-size: 18px;
-            text-align: center;
+            flex: 1;
         `;
-        this.panel.appendChild(title);
+
+        // 最小化按钮
+        const minimizeButton = document.createElement('button');
+        minimizeButton.textContent = '−';
+        minimizeButton.style.cssText = `
+            background: none;
+            border: none;
+            font-size: 20px;
+            font-weight: bold;
+            color: #666;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 3px;
+            margin-left: 10px;
+            line-height: 1;
+        `;
+        minimizeButton.title = '最小化';
+
+        // 添加悬停效果
+        minimizeButton.addEventListener('mouseenter', () => {
+            minimizeButton.style.backgroundColor = '#e0e0e0';
+        });
+        minimizeButton.addEventListener('mouseleave', () => {
+            minimizeButton.style.backgroundColor = 'transparent';
+        });
+
+        // 添加点击处理器
+        minimizeButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.cycleUIState();
+        });
+
+        titleBar.appendChild(title);
+        titleBar.appendChild(minimizeButton);
+        this.panel.appendChild(titleBar);
 
         // 课程输入容器
         this.container = document.createElement('div');
@@ -329,6 +623,10 @@ class UIController {
         `;
         this.panel.appendChild(helpText);
 
+        // Ensure panel is attached to DOM
+        if (!this.panel.parentNode) {
+            document.body.appendChild(this.panel);
+        }
         return this.panel;
     }
 
@@ -358,24 +656,57 @@ class UIController {
             return;
         }
 
-        const panel = this.createControlPanel();
-        panel.id = 'course-registration-panel';
-        document.body.appendChild(panel);
+        // 开始时显示悬浮按钮，而不是自动打开面板
+        this.transitionToState(UI_STATES.FLOATING_BUTTON);
 
-        // 启动拖动功能
-        this.makeDraggable(panel);
+        // 课程状态变化监听器
+        document.addEventListener('courses:started', () => {
+            this.isSelectingCourses = true;
+            this.startTime = Date.now();
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程开始，UI状态更新为选课中`);
+            // 如果当前是悬浮按钮状态，自动展开到主面板
+            if (this.currentState === UI_STATES.FLOATING_BUTTON) {
+                this.transitionToState(UI_STATES.FULL_PANEL);
+            }
+        });
 
-        console.log(`${CONFIG.LOG.LOG_PREFIX} 用户界面初始化完成`);
+        document.addEventListener('courses:stopped', () => {
+            this.isSelectingCourses = false;
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程停止，UI状态更新为非选课中`);
+            // 如果当前是迷你面板状态，自动最小化到悬浮按钮
+            if (this.currentState === UI_STATES.MINIMIZED_STATUS) {
+                this.transitionToState(UI_STATES.FLOATING_BUTTON);
+            }
+            // 停止状态更新定时器
+            this.stopMinimizedStatusUpdates();
+        });
+
+        console.log(`${CONFIG.LOG.LOG_PREFIX} 用户界面初始化完成，开始显示悬浮按钮`);
     }
 
     /**
      * 销毁用户界面
      */
     destroy() {
+        // 停止状态更新定时器
+        this.stopMinimizedStatusUpdates();
+
+        // 移除所有UI元素
         if (this.panel && this.panel.parentNode) {
             this.panel.parentNode.removeChild(this.panel);
-            console.log(`${CONFIG.LOG.LOG_PREFIX} 用户界面已销毁`);
         }
+        if (this.floatingButton && this.floatingButton.parentNode) {
+            this.floatingButton.parentNode.removeChild(this.floatingButton);
+        }
+        if (this.minimizedPanel && this.minimizedPanel.parentNode) {
+            this.minimizedPanel.parentNode.removeChild(this.minimizedPanel);
+        }
+
+        // 移除事件监听器
+        document.removeEventListener('courses:started', this.handleCoursesStarted);
+        document.removeEventListener('courses:stopped', this.handleCoursesStopped);
+
+        console.log(`${CONFIG.LOG.LOG_PREFIX} 用户界面已销毁`);
     }
 
     /**

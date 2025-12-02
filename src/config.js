@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.0
+ * @version 1.0.1
  * @description 专为中南民族大学学生设计的自动化课程注册助手配置模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -61,6 +61,43 @@ export const UI_CONFIG = {
         fontSize: '16px',
         borderRadius: '10px',
         boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+    },
+    // 悬浮按钮样式
+    FLOATING_BUTTON: {
+        width: '60px',
+        height: '60px',
+        borderRadius: '50%',
+        backgroundColor: '#007bff',
+        color: 'white',
+        fontSize: '14px',
+        fontWeight: 'bold',
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        cursor: 'pointer',
+        zIndex: '9999',
+        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        userSelect: 'none'
+    },
+    // 迷你状态面板样式
+    MINIMIZED_PANEL: {
+        width: '280px',
+        minHeight: '180px',
+        borderRadius: '8px',
+        backgroundColor: 'white',
+        border: '1px solid #ccc',
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        cursor: 'pointer',
+        zIndex: '9999',
+        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+        padding: '15px',
+        fontSize: '12px',
+        fontFamily: 'Arial, sans-serif'
     },
     // 按钮样式
     BUTTON_STYLE: {

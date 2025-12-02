@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.0
+ * @version 1.0.
  * @description 专为中南民族大学学生设计的自动化课程注册助手核心逻辑模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -169,6 +169,9 @@ class CourseRegistrationManager {
                 this.trySelectCourse(jxbid);
             });
         }, CONFIG.GRAB.POLLING_INTERVAL);
+
+        // 发出课程开始事件
+        document.dispatchEvent(new CustomEvent('courses:started'));
     }
 
     /**
@@ -179,6 +182,9 @@ class CourseRegistrationManager {
             clearInterval(this.intervalId);
             this.intervalId = null;
             console.log(`${CONFIG.LOG.LOG_PREFIX} 定时器已停止！`);
+
+            // 发出课程停止事件
+            document.dispatchEvent(new CustomEvent('courses:stopped'));
         } else {
             console.log(`${CONFIG.LOG.LOG_PREFIX} 定时器未启动，无法停止！`);
         }
