@@ -8,7 +8,10 @@
 // @match        https://xk.webvpn.scuec.edu.cn/xsxk/*
 // @match        https://xk.webvpn.scuec.edu.cn/*
 // @run-at       document-idle
-// @grant        none
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_deleteValue
+// @grant        GM_listValues
 // ==/UserScript==
 /**
  * 中南民族大学自动选课助手
@@ -138,6 +141,311 @@
         MINIMIZED_STATUS: 'minimized_status'
     };
 
+    // ==================== 本地数据管理器 ====================
+
+    /**
+     * 本地数据管理器 - 负责课程数据的持久化存储和恢复
+     */
+    class LocalDataManager {
+        constructor() {
+            this.STORAGE_KEYS = {
+                COURSES: 'scmu_courses',
+                EXPERIMENTAL_CLASSES: 'scmu_experimental_classes',
+                METADATA: 'scmu_metadata'
+            };
+            this.DATA_VERSION = '1.0.0';
+            this.storageAvailable = this.checkStorageAvailability();
+            this.DEFAULT_COURSE_NAME = '请输入名称(可选)';
+        }
+
+        /**
+         * 检查存储功能是否可用
+         */
+        checkStorageAvailability() {
+            try {
+                return typeof GM_setValue !== 'undefined' && typeof GM_getValue !== 'undefined';
+            } catch (e) {
+                console.error(`${CONFIG.LOG.LOG_PREFIX} 存储功能检测失败:`, e);
+                return false;
+            }
+        }
+
+        /**
+         * 保存课程数据到本地存储
+         */
+        saveCoursesData(courses, experimentalClasses, statusMap) {
+            if (!this.storageAvailable) {
+                console.warn(`${CONFIG.LOG.LOG_PREFIX} 存储功能不可用，数据无法保存`);
+                return false;
+            }
+
+            try {
+                // 转换数据格式为存储格式
+                const storageData = {
+                    courses: courses.map(courseId => ({
+                        id: courseId,
+                        name: this.DEFAULT_COURSE_NAME, // 默认名称，后续会通过UI更新
+                        addedTime: Date.now(),
+                        status: {
+                            success: statusMap[courseId]?.success || false
+                        }
+                    })),
+                    experimentalClasses: experimentalClasses,
+                    metadata: {
+                        lastSaved: Date.now(),
+                        version: this.DATA_VERSION,
+                        sessionCount: this.getSessionCount() + 1
+                    }
+                };
+
+                // 保存到本地存储
+                GM_setValue(this.STORAGE_KEYS.COURSES, JSON.stringify(storageData.courses));
+                GM_setValue(this.STORAGE_KEYS.EXPERIMENTAL_CLASSES, JSON.stringify(storageData.experimentalClasses));
+                GM_setValue(this.STORAGE_KEYS.METADATA, JSON.stringify(storageData.metadata));
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 数据保存成功，共${storageData.courses.length}门课程`);
+                return true;
+            } catch (error) {
+                console.error(`${CONFIG.LOG.LOG_PREFIX} 保存数据失败:`, error);
+                return false;
+            }
+        }
+
+        /**
+         * 从本地存储加载课程数据
+         */
+        loadCoursesData() {
+            console.log(`${CONFIG.LOG.LOG_PREFIX} ===== LocalDataManager.loadCoursesData 开始 =====`);
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 存储功能状态:`, {
+                available: this.storageAvailable,
+                storageKeys: this.STORAGE_KEYS,
+                gmGetValue: typeof GM_getValue !== 'undefined',
+                gmSetValue: typeof GM_setValue !== 'undefined'
+            });
+
+            if (!this.storageAvailable) {
+                console.warn(`${CONFIG.LOG.LOG_PREFIX} 存储功能不可用，无法加载保存的数据`);
+                return null;
+            }
+
+            try {
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 开始从各存储键读取数据...`);
+
+                const coursesStr = GM_getValue(this.STORAGE_KEYS.COURSES, '[]');
+                const experimentalClassesStr = GM_getValue(this.STORAGE_KEYS.EXPERIMENTAL_CLASSES, '{}');
+                const metadataStr = GM_getValue(this.STORAGE_KEYS.METADATA, '{}');
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 原始存储数据:`, {
+                    coursesStr: coursesStr.substring(0, 200) + (coursesStr.length > 200 ? '...' : ''),
+                    experimentalClassesStr: experimentalClassesStr.substring(0, 200) + (experimentalClassesStr.length > 200 ? '...' : ''),
+                    metadataStr: metadataStr.substring(0, 200) + (metadataStr.length > 200 ? '...' : '')
+                });
+
+                const courses = JSON.parse(coursesStr);
+                const experimentalClasses = JSON.parse(experimentalClassesStr);
+                const metadata = JSON.parse(metadataStr);
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 解析后的数据:`, {
+                    coursesType: typeof courses,
+                    coursesLength: courses.length,
+                    courses: courses,
+                    experimentalClassesType: typeof experimentalClasses,
+                    experimentalClassesKeys: Object.keys(experimentalClasses),
+                    metadata: metadata
+                });
+
+                if (courses.length === 0) {
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 课程数组为空，没有保存的课程数据`);
+                    return null;
+                }
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 成功解析${courses.length}门课程数据`);
+
+                const result = {
+                    courses: courses.map(course => course.id),
+                    courseDetails: courses, // 保留详细信息供UI使用
+                    experimentalClasses,
+                    metadata
+                };
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 返回的数据结构:`, {
+                    coursesCount: result.courses.length,
+                    courseDetailsCount: result.courseDetails.length,
+                    experimentalClassesCount: Object.keys(result.experimentalClasses).length,
+                    courses: result.courses,
+                    courseDetails: result.courseDetails,
+                    experimentalClasses: result.experimentalClasses
+                });
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} ===== LocalDataManager.loadCoursesData 完成 =====`);
+                return result;
+
+            } catch (error) {
+                console.error(`${CONFIG.LOG.LOG_PREFIX} 加载本地存储数据失败:`, error);
+                console.error(`${CONFIG.LOG.LOG_PREFIX} 错误详情:`, {
+                    message: error.message,
+                    stack: error.stack,
+                    storageKeys: this.STORAGE_KEYS,
+                    storageAvailable: this.storageAvailable
+                });
+                return null;
+            }
+        }
+
+        /**
+         * 更新课程名称
+         */
+        updateCourseName(courseId, courseName) {
+            if (!this.storageAvailable) {
+                console.warn(`${CONFIG.LOG.LOG_PREFIX} 存储功能不可用，无法更新课程名称`);
+                return false;
+            }
+
+            try {
+                const courses = JSON.parse(GM_getValue(this.STORAGE_KEYS.COURSES, '[]'));
+                const courseIndex = courses.findIndex(course => course.id === courseId);
+
+                if (courseIndex !== -1) {
+                    const oldName = courses[courseIndex].name;
+                    courses[courseIndex].name = courseName;
+                    courses[courseIndex].nameUpdatedTime = Date.now();
+
+                    GM_setValue(this.STORAGE_KEYS.COURSES, JSON.stringify(courses));
+
+                    // 更新元数据
+                    const metadata = JSON.parse(GM_getValue(this.STORAGE_KEYS.METADATA, '{}'));
+                    metadata.lastSaved = Date.now();
+                    GM_setValue(this.STORAGE_KEYS.METADATA, JSON.stringify(metadata));
+
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 课程名称已更新: ${courseId} (${oldName} -> ${courseName})`);
+                    return true;
+                } else {
+                    console.warn(`${CONFIG.LOG.LOG_PREFIX} 课程 ${courseId} 不存在，无法更新名称`);
+                }
+            } catch (error) {
+                console.error(`${CONFIG.LOG.LOG_PREFIX} 更新课程名称失败:`, error);
+            }
+            return false;
+        }
+
+        /**
+         * 从本地存储中删除指定课程
+         */
+        removeCourse(courseId) {
+            if (!this.storageAvailable) return false;
+
+            try {
+                // 删除课程数据
+                let courses = JSON.parse(GM_getValue(this.STORAGE_KEYS.COURSES, '[]'));
+                courses = courses.filter(course => course.id !== courseId);
+
+                // 删除实验班数据
+                const experimentalClasses = JSON.parse(GM_getValue(this.STORAGE_KEYS.EXPERIMENTAL_CLASSES, '{}'));
+                delete experimentalClasses[courseId];
+
+                // 保存更新后的数据
+                GM_setValue(this.STORAGE_KEYS.COURSES, JSON.stringify(courses));
+                GM_setValue(this.STORAGE_KEYS.EXPERIMENTAL_CLASSES, JSON.stringify(experimentalClasses));
+
+                // 更新元数据
+                const metadata = JSON.parse(GM_getValue(this.STORAGE_KEYS.METADATA, '{}'));
+                metadata.lastSaved = Date.now();
+                GM_setValue(this.STORAGE_KEYS.METADATA, JSON.stringify(metadata));
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 课程已从本地存储删除: ${courseId}`);
+                return true;
+            } catch (error) {
+                console.error(`${CONFIG.LOG.LOG_PREFIX} 删除课程失败:`, error);
+                return false;
+            }
+        }
+
+        /**
+         * 获取会话计数
+         */
+        getSessionCount() {
+            try {
+                const metadata = JSON.parse(GM_getValue(this.STORAGE_KEYS.METADATA, '{}'));
+                return metadata.sessionCount || 0;
+            } catch (e) {
+                return 0;
+            }
+        }
+
+        /**
+         * 清空所有本地存储数据
+         */
+        clearAllData() {
+            if (!this.storageAvailable) return false;
+
+            try {
+                Object.values(this.STORAGE_KEYS).forEach(key => {
+                    GM_deleteValue(key);
+                });
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 所有本地存储数据已清空`);
+                return true;
+            } catch (error) {
+                console.error(`${CONFIG.LOG.LOG_PREFIX} 清空数据失败:`, error);
+                return false;
+            }
+        }
+
+        /**
+         * 获取存储状态信息
+         */
+        getStorageInfo() {
+            if (!this.storageAvailable) {
+                return { available: false, message: '存储功能不可用' };
+            }
+
+            try {
+                const courses = JSON.parse(GM_getValue(this.STORAGE_KEYS.COURSES, '[]'));
+                const metadata = JSON.parse(GM_getValue(this.STORAGE_KEYS.METADATA, '{}'));
+
+                return {
+                    available: true,
+                    coursesCount: courses.length,
+                    lastSaved: metadata.lastSaved ? new Date(metadata.lastSaved).toLocaleString() : '未知',
+                    version: metadata.version || '1.0.0',
+                    sessionCount: metadata.sessionCount || 0
+                };
+            } catch (error) {
+                return { available: true, error: error.message };
+            }
+        }
+
+        /**
+         * 获取已保存课程的详细摘要
+         */
+        getSavedCoursesSummary() {
+            if (!this.storageAvailable) {
+                return { available: false, courses: [] };
+            }
+
+            try {
+                const courses = JSON.parse(GM_getValue(this.STORAGE_KEYS.COURSES, '[]'));
+                const experimentalClasses = JSON.parse(GM_getValue(this.STORAGE_KEYS.EXPERIMENTAL_CLASSES, '{}'));
+
+                return {
+                    available: true,
+                    courses: courses.map(course => ({
+                        id: course.id,
+                        name: course.name,
+                        addedTime: course.addedTime,
+                        hasExperimentalClasses: experimentalClasses[course.id] && experimentalClasses[course.id].length > 0,
+                        experimentalClassesCount: experimentalClasses[course.id] ? experimentalClasses[course.id].length : 0,
+                        isSuccessful: course.status?.success || false
+                    })),
+                    totalCourses: courses.length,
+                    successfulCourses: courses.filter(c => c.status?.success).length
+                };
+            } catch (error) {
+                console.error(`${CONFIG.LOG.LOG_PREFIX} 获取课程摘要失败:`, error);
+                return { available: true, error: error.message, courses: [] };
+            }
+        }
+    }
+
     // ==================== 核心类定义 ====================
 
     /**
@@ -149,7 +457,9 @@
             this.statusMap = {};
             this.glJxbidMap = {};
             this.intervalId = null;
+            this.localDataManager = new LocalDataManager();
             this.initEventListeners();
+            this.loadSavedData();
         }
 
         initEventListeners() {
@@ -159,6 +469,87 @@
                 console.log(`🎉 选课成功! 课程: ${courseId}`);
                 this.showNotification(`成功抢到课程: ${courseId}`, 'success');
             });
+        }
+
+        /**
+         * 加载保存的课程数据
+         */
+        loadSavedData() {
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 开始加载本地存储数据...`);
+
+            const savedData = this.localDataManager.loadCoursesData();
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 本地存储数据读取结果:`, {
+                hasData: !!savedData,
+                coursesCount: savedData?.courses?.length || 0,
+                courseDetailsCount: savedData?.courseDetails?.length || 0,
+                experimentalClassesCount: Object.keys(savedData?.experimentalClasses || {}).length,
+                storageAvailable: this.localDataManager.storageAvailable
+            });
+
+            if (savedData && savedData.courses.length > 0) {
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 发现${savedData.courses.length}门保存的课程:`, savedData.courses);
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 课程详细信息:`, savedData.courseDetails);
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 实验班信息:`, savedData.experimentalClasses);
+
+                // 更新课程列表
+                this.courses = savedData.courses; // ✅ 修复：直接使用已提取的ID数组
+                this.glJxbidMap = savedData.experimentalClasses;
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 更新后的课程ID列表:`, this.courses);
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 更新后的实验班映射:`, this.glJxbidMap);
+
+                // 初始化课程状态（使用保存的状态）
+                savedData.courseDetails.forEach(courseDetail => {
+                    this.statusMap[courseDetail.id] = {
+                        success: courseDetail.status?.success || false,
+                        glReady: false,
+                        glAttemptIndex: 0
+                    };
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${courseDetail.id}状态初始化:`, {
+                        name: courseDetail.name,
+                        success: this.statusMap[courseDetail.id].success
+                    });
+                });
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 完整的状态映射:`, this.statusMap);
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 数据加载完成，准备触发UI更新事件`);
+
+                // 触发数据加载完成事件，通知UI更新
+                const eventData = {
+                    courses: this.courses,
+                    courseDetails: savedData.courseDetails,
+                    statusMap: this.statusMap
+                };
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 触发storage:dataLoaded事件，数据:`, eventData);
+
+                document.dispatchEvent(new CustomEvent('storage:dataLoaded', {
+                    detail: eventData
+                }));
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} storage:dataLoaded事件已触发`);
+            } else {
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 没有找到保存的数据或数据为空，使用默认状态`);
+                console.log(`${CONFIG.LOG.LOG_PREFIX} savedData详情:`, savedData);
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 当前课程列表:`, this.courses);
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 当前状态映射:`, this.statusMap);
+            }
+        }
+
+        /**
+         * 保存当前数据到本地存储
+         */
+        saveCurrentData() {
+            const success = this.localDataManager.saveCoursesData(
+                this.courses,
+                this.glJxbidMap,
+                this.statusMap
+            );
+
+            if (!success) {
+                console.warn(`${CONFIG.LOG.LOG_PREFIX} 数据保存失败，但不影响功能使用`);
+            }
+
+            return success;
         }
 
         initCourseState(jxbid) {
@@ -242,6 +633,9 @@
                     console.log(`✅ [成功] ${jxbid}${glInfo} 选课成功！时间: ${data.xksj || new Date().toLocaleTimeString()}`);
                     state.success = true;
 
+                    // 自动保存选课成功状态
+                    this.saveCurrentData();
+
                     // 触发成功事件
                     const event = new CustomEvent('course:success', {
                         detail: { courseId: jxbid, timestamp: Date.now() }
@@ -311,6 +705,10 @@
             this.courses.push(trimmedId);
             this.initCourseState(trimmedId);
             console.log(`${CONFIG.LOG.LOG_PREFIX} 已添加课程: ${trimmedId}`);
+
+            // 自动保存数据
+            this.saveCurrentData();
+
             return true;
         }
 
@@ -322,6 +720,17 @@
                 delete this.statusMap[jxbid];
                 delete this.glJxbidMap[jxbid];
                 console.log(`${CONFIG.LOG.LOG_PREFIX} 已移除课程: ${jxbid}`);
+
+                // ✅ 修复：直接从本地存储中删除课程记录
+                const storageRemoved = this.localDataManager.removeCourse(jxbid);
+                if (storageRemoved) {
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${jxbid}已从本地存储删除`);
+                } else {
+                    console.warn(`${CONFIG.LOG.LOG_PREFIX} 从本地存储删除课程${jxbid}失败`);
+                }
+
+                // 自动保存数据（保存更新后的状态）
+                this.saveCurrentData();
 
                 // 检查课程列表是否为空，如果为空且正在选课则自动停止
                 this.checkEmptyCourseList();
@@ -456,6 +865,10 @@
             this.courses = [];
             this.statusMap = {};
             this.glJxbidMap = {};
+
+            // 重置后保存空数据
+            this.saveCurrentData();
+
             console.log(`${CONFIG.LOG.LOG_PREFIX} 所有状态已重置`);
         }
 
@@ -528,6 +941,242 @@
             this.statusModal = null;
             this.stopTime = null;
             this.statusModalUpdateInterval = null;
+
+            // 初始化存储事件监听
+            this.initStorageEventListeners();
+        }
+
+        /**
+         * 初始化存储事件监听
+         */
+        initStorageEventListeners() {
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 初始化存储事件监听器...`);
+
+            // 监听数据加载完成事件
+            document.addEventListener('storage:dataLoaded', (event) => {
+                console.log(`${CONFIG.LOG.LOG_PREFIX} ===== storage:dataLoaded 事件触发 =====`);
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 事件详情:`, event);
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 事件数据:`, event.detail);
+
+                const { courses, courseDetails, statusMap } = event.detail;
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 解构事件数据:`, {
+                    courses: courses,
+                    coursesCount: courses?.length || 0,
+                    courseDetails: courseDetails,
+                    courseDetailsCount: courseDetails?.length || 0,
+                    statusMap: statusMap,
+                    statusMapKeys: Object.keys(statusMap || {})
+                });
+
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 开始调用restoreUIFromStorage...`);
+                this.restoreUIFromStorage(courses, courseDetails, statusMap);
+            });
+
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 存储事件监听器初始化完成`);
+        }
+
+        /**
+         * 为课程输入框绑定事件监听器（用于数据恢复时）
+         */
+        bindCourseInputEvents(courseInput, inputId, inputName) {
+            const div = courseInput;
+
+            // 绑定课程ID输入框的blur事件
+            inputId.addEventListener('blur', async () => {
+                const newJxbid = inputId.value.trim();
+                const oldJxbid = inputId.dataset.currentCourseId || '';
+                const isRunning = this.courseManager.intervalId !== null;
+
+                if (newJxbid && this.isValidCourseId(newJxbid)) {
+                    if (oldJxbid && oldJxbid !== newJxbid) {
+                        // 替换课程情况
+                        const updated = this.courseManager.updateCourse(oldJxbid, newJxbid);
+                        if (updated) {
+                            inputId.dataset.currentCourseId = newJxbid;
+                            this.showNotification(`课程已更新: ${oldJxbid} → ${newJxbid}`, 'success');
+                        } else {
+                            // 更新失败，恢复原值
+                            inputId.value = oldJxbid;
+                            this.showNotification(`课程更新失败: ${newJxbid}`, 'error');
+                        }
+                    }
+                } else if (!newJxbid && oldJxbid) {
+                    // 删除课程情况
+                    this.courseManager.removeCourse(oldJxbid);
+                    inputId.dataset.currentCourseId = '';
+                    inputName.value = '';
+                }
+            });
+
+            // 绑定课程名称输入框的blur事件
+            inputName.addEventListener('blur', async () => {
+                const courseId = inputId.value.trim();
+                const courseName = inputName.value.trim();
+
+                if (courseId && this.isValidCourseId(courseId) && courseName) {
+                    const success = this.courseManager.localDataManager.updateCourseName(courseId, courseName);
+                    if (success) {
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 课程名称已保存: ${courseId} - ${courseName}`);
+                        this.showNotification(`课程名称已更新: ${courseName}`, 'success');
+                    }
+                }
+            });
+
+            // 绑定课程名称输入框的Enter键支持
+            inputName.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    inputName.blur();
+                }
+            });
+
+            // 获取删除按钮并绑定点击事件
+            const deleteButton = div.querySelector('button');
+            if (deleteButton) {
+                deleteButton.onclick = () => this.handleDeleteCourse(div, inputId);
+            }
+        }
+
+        /**
+         * 从存储数据恢复UI界面
+         */
+        restoreUIFromStorage(courses, courseDetails, statusMap) {
+            console.log(`${CONFIG.LOG.LOG_PREFIX} ===== 开始UI数据恢复 =====`);
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 恢复参数详情:`, {
+                courses: courses,
+                coursesCount: courses?.length || 0,
+                courseDetails: courseDetails,
+                courseDetailsCount: courseDetails?.length || 0,
+                statusMap: statusMap,
+                statusMapKeys: Object.keys(statusMap || {})
+            });
+
+            if (!courses || courses.length === 0) {
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 没有课程数据需要恢复，退出恢复流程`);
+                return;
+            }
+
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 开始恢复UI界面，共${courses.length}门课程:`, courses);
+
+            try {
+                // 等待UI完全初始化后再恢复数据
+                setTimeout(() => {
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 检查UI容器状态...`);
+                    if (!this.container) {
+                        console.warn(`${CONFIG.LOG.LOG_PREFIX} UI容器未初始化，延迟500ms后重试`);
+                        setTimeout(() => this.restoreUIFromStorage(courses, courseDetails, statusMap), 500);
+                        return;
+                    }
+
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} UI容器已就绪，清空现有内容`);
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 清空前容器内容:`, this.container.innerHTML);
+
+                    // 清空现有输入框
+                    this.container.innerHTML = '';
+
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 开始为${courses.length}门课程创建输入框`);
+
+                    // 为每个保存的课程创建输入框
+                    courses.forEach((courseId, index) => {
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 处理课程 ${index + 1}/${courses.length}: ${courseId}`);
+
+                        const courseInput = this.createCourseInput(index);
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 课程输入框HTML结构:`, courseInput.outerHTML);
+
+                        const inputs = courseInput.querySelectorAll('input[type="text"]');
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 找到${inputs.length}个输入框:`, Array.from(inputs).map(input => ({
+                            placeholder: input.placeholder,
+                            type: input.type,
+                            value: input.value
+                        })));
+
+                        const inputId = inputs[0]; // 课程ID输入框
+                        const inputName = inputs[1]; // 课程名称输入框
+                        const statusDisplay = courseInput.querySelector('.status-display');
+
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 输入框选择结果:`, {
+                            inputId: !!inputId,
+                            inputName: !!inputName,
+                            statusDisplay: !!statusDisplay,
+                            inputIdPlaceholder: inputId?.placeholder,
+                            inputNamePlaceholder: inputName?.placeholder
+                        });
+
+                        // 设置课程ID
+                        inputId.value = courseId;
+                        inputId.dataset.currentCourseId = courseId;
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 设置课程ID: ${courseId}`);
+
+                        // 设置课程名称（如果有的话）
+                        const courseDetail = courseDetails.find(detail => detail.id === courseId);
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${courseId}详细信息:`, courseDetail);
+
+                        if (courseDetail && courseDetail.name && courseDetail.name !== this.courseManager.localDataManager.DEFAULT_COURSE_NAME) {
+                            inputName.value = courseDetail.name;
+                            inputId.title = courseDetail.name; // 保留tooltip功能
+                            console.log(`${CONFIG.LOG.LOG_PREFIX} 设置课程名称: "${courseDetail.name}"`);
+                        } else {
+                            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${courseId}无有效名称，使用默认值`);
+                        }
+
+                        // 设置状态显示
+                        if (statusDisplay && statusMap[courseId]) {
+                            const courseStatus = statusMap[courseId];
+                            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${courseId}状态:`, courseStatus);
+
+                            if (courseStatus.success) {
+                                statusDisplay.textContent = '✅ 已选上';
+                                statusDisplay.style.color = '#28a745';
+                            } else {
+                                statusDisplay.textContent = '等待中...';
+                                statusDisplay.style.color = '#6c757d';
+                            }
+                            console.log(`${CONFIG.LOG.LOG_PREFIX} 设置状态显示: "${statusDisplay.textContent}"`);
+                        } else {
+                            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${courseId}无状态信息或状态显示元素不存在`);
+                        }
+
+                        // 为恢复的课程输入框绑定事件监听器
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 绑定课程${courseId}的事件监听器`);
+                        this.bindCourseInputEvents(courseInput, inputId, inputName);
+
+                        // 添加到容器
+                        this.container.appendChild(courseInput);
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${courseId}输入框已添加到容器`);
+                    });
+
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 所有课程输入框创建完成，容器中有${this.container.children.length}个子元素`);
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 容器最终内容:`, this.container.innerHTML);
+
+                    // 更新UI状态
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 更新UI状态...`);
+                    this.updateScrollableContainer();
+                    this.updateButtonStates(false);
+
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} UI界面恢复完成`);
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 最终统计:`, {
+                        课程数量: courses.length,
+                        输入框数量: this.container.children.length,
+                        状态映射: Object.keys(statusMap).length,
+                        课程详情: courseDetails.length
+                    });
+
+                    // 显示恢复提示
+                    this.showNotification(`已恢复${courses.length}门课程`, 'info');
+
+                }, 100); // 短暂延迟确保UI完全初始化
+
+            } catch (error) {
+                console.error(`${CONFIG.LOG.LOG_PREFIX} UI恢复失败:`, error);
+                console.error(`${CONFIG.LOG.LOG_PREFIX} 错误详情:`, {
+                    message: error.message,
+                    stack: error.stack,
+                    courses: courses,
+                    container: this.container,
+                    containerExists: !!this.container,
+                    containerChildren: this.container?.children?.length || 0
+                });
+                this.showNotification('UI恢复失败，请刷新页面重试', 'error');
+            }
         }
 
         /**
@@ -821,6 +1470,27 @@
                 background-color: #dc3545;
                 transition: background-color 0.2s;
             `;
+
+            // 为课程名称输入框添加blur事件监听器
+            inputName.addEventListener('blur', async () => {
+                const courseId = inputId.value.trim();
+                const courseName = inputName.value.trim();
+
+                if (courseId && this.isValidCourseId(courseId) && courseName) {
+                    const success = this.courseManager.localDataManager.updateCourseName(courseId, courseName);
+                    if (success) {
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 课程名称已保存: ${courseId} - ${courseName}`);
+                        this.showNotification(`课程名称已更新: ${courseName}`, 'success');
+                    }
+                }
+            });
+
+            // 添加Enter键支持
+            inputName.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    inputName.blur();
+                }
+            });
 
             // 添加删除按钮悬停效果
             deleteButton.addEventListener('mouseenter', () => {
@@ -1746,14 +2416,23 @@
             // 重置课程管理器
             this.courseManager.reset();
 
+            // 清空本地存储
+            const storageCleared = this.courseManager.localDataManager.clearAllData();
+            if (storageCleared) {
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 本地存储数据已清空`);
+            } else {
+                console.warn(`${CONFIG.LOG.LOG_PREFIX} 清空本地存储失败，但不影响重置操作`);
+            }
+
             // 重置UI状态
             this.container.innerHTML = '';
             this.container.appendChild(this.createCourseInput(0));
             this.updateScrollableContainer();
             this.updateButtonStates(false);
 
-            // 显示通知
-            this.showNotification('所有状态已重置', 'info');
+            // 显示增强的通知消息
+            const storageStatus = storageCleared ? '及本地存储数据' : '';
+            this.showNotification(`所有状态${storageStatus}已重置`, 'info');
 
             console.log(`${CONFIG.LOG.LOG_PREFIX} 重置操作完成`);
         }
@@ -2218,8 +2897,20 @@
                 return;
             }
 
+            // ✅ 修复：初始化存储事件监听器（在数据加载事件之前设置）
+            this.initStorageEventListeners();
+
             // 开始时显示悬浮按钮，而不是自动打开面板
             this.transitionToState(UI_STATES.FLOATING_BUTTON);
+
+            // ✅ 修复：检查是否已有数据加载完成但事件未被捕获
+            if (this.courseManager.courses.length > 0) {
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 检测到已有课程数据，恢复UI界面`);
+                const savedData = this.courseManager.localDataManager.loadCoursesData();
+                if (savedData) {
+                    this.restoreUIFromStorage(this.courseManager.courses, savedData.courseDetails, this.courseManager.statusMap);
+                }
+            }
 
             // 课程状态变化监听器
             document.addEventListener('courses:started', () => {
@@ -2685,32 +3376,43 @@
             }, 3000);
         }
     }
-// ==================== Tampermonkey环境检测 ====================    function initializeScript() {        try {            // 验证运行环境            if (!window.location.hostname.includes("scuec.edu.cn")) {                console.warn("[选课助手] 非目标域名，跳过初始化");                return;            }            // 检查是否已经初始化过，避免重复加载            if (window.courseManager || window.uiController) {                console.log("[选课助手] 脚本已初始化，跳过重复加载");                return;            }            console.log("[选课助手] Tampermonkey环境初始化开始");
+// ==================== Tampermonkey环境检测 ====================
+    function initializeScript() {
+        try {
+            // 验证运行环境
+            if (!window.location.hostname.includes("scuec.edu.cn")) {
+                console.warn("[选课助手] 非目标域名，跳过初始化");
+                return;
+            }
+            // 检查是否已经初始化过，避免重复加载
+            if (window.courseManager || window.uiController) {
+                console.log("[选课助手] 脚本已初始化，跳过重复加载");
+                return;
+            }
+            console.log("[选课助手] Tampermonkey环境初始化开始");
 
-    // ==================== 主程序入口 ====================
+            // ==================== 主程序入口 ====================
 
-    // 创建管理器实例
-    const courseManager = new CourseRegistrationManager();
-    const uiController = new UIController(courseManager);
+            // 创建管理器实例
+            const courseManager = new CourseRegistrationManager();
+            const uiController = new UIController(courseManager);
 
-    // 初始化界面
-    uiController.initialize();
+            // 初始化界面（包含数据恢复逻辑）
+            uiController.initialize();
 
-    // 暴露到全局作用域
-    window.courseManager = courseManager;
-    window.uiController = uiController;
-    window.stopLoop = () => courseManager.stopLoop();
+            // 暴露到全局作用域
+            window.courseManager = courseManager;
+            window.uiController = uiController;
+            window.stopLoop = () => courseManager.stopLoop();
 
-    // 显示版权信息和启动消息
-    console.log(`
+            // 显示版权信息和启动消息
+            console.log(`
 🎓 中南民族大学自动选课助手 v1.0.3
 👤 作者: SuShuHeng (https://github.com/sushuheng)
 📜 许可证: APACHE 2.0
 ⚠️  免责声明: 本项目仅用于学习目的，请遵守学校相关规定
 📧 商用请联系: https://github.com/sushuheng
 ⚖️  协议: http://www.apache.org/licenses/LICENSE-2.0
-
-Licensed under the Apache License, Version 2.0
 
 🚀 选课助手启动成功！
 📝 使用方法：
@@ -2721,8 +3423,31 @@ Licensed under the Apache License, Version 2.0
    - courseManager: 选课管理器
    - uiController: 界面控制器
    - stopLoop(): 停止选课
-} catch (error) {            console.error("[选课助手] 初始化过程中发生错误:", error);            // 尝试清理可能已创建的全局变量            if (window.courseManager) delete window.courseManager;            if (window.uiController) delete window.uiController;            if (window.stopLoop) delete window.stopLoop;        }    }    // ==================== Tampermonkey初始化调度 ====================    // Tampermonkey环境下使用document-idle时机    if (document.readyState === "loading") {        document.addEventListener("DOMContentLoaded", () => {            setTimeout(initializeScript, 500);        });    } else if (document.readyState === "interactive") {        document.addEventListener("load", () => {            setTimeout(initializeScript, 500);        });    } else {        // 页面已完全加载，延迟500ms确保稳定        setTimeout(initializeScript, 500);    }
 ⚠️ 重要提醒：请仅在合法的选课时间使用本工具！
-    `);
+            `);
+
+        } catch (error) {
+            console.error("[选课助手] 初始化过程中发生错误:", error);
+            // 尝试清理可能已创建的全局变量
+            if (window.courseManager) delete window.courseManager;
+            if (window.uiController) delete window.uiController;
+            if (window.stopLoop) delete window.stopLoop;
+        }
+    }
+
+    // ==================== Tampermonkey初始化调度 ====================
+    // Tampermonkey环境下使用document-idle时机
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => {
+            setTimeout(initializeScript, 500);
+        });
+    } else if (document.readyState === "interactive") {
+        document.addEventListener("load", () => {
+            setTimeout(initializeScript, 500);
+        });
+    } else {
+        // 页面已完全加载，延迟500ms确保稳定
+        setTimeout(initializeScript, 500);
+    }
 
 })();
