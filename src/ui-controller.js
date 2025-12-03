@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.1
+ * @version 1.0.2
  * @description 专为中南民族大学学生设计的自动化课程注册助手UI控制模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -52,7 +52,10 @@ class UIController {
         this.floatingButton = null;
         this.minimizedPanel = null;
         this.startTime = null;
+        this.stopTime = null; // 新增：停止时间记录
         this.statusUpdateInterval = null;
+        this.statusModal = null; // 新增：状态面板单例引用
+        this.statusModalUpdateInterval = null; // 新增：状态面板更新定时器
     }
 
     /**
@@ -265,22 +268,34 @@ class UIController {
 
         status.courses.forEach(course => {
             const courseItem = document.createElement('div');
+
+            // 修正状态显示逻辑，增加"待进行"状态
+            let statusIcon, statusColor;
+            if (course.success) {
+                statusIcon = '✅';
+                statusColor = '#28a745';
+            } else if (status.isRunning) {
+                statusIcon = '⏳';
+                statusColor = '#007bff';
+            } else {
+                statusIcon = '⏸️';
+                statusColor = '#6c757d';
+            }
+
             courseItem.style.cssText = `
                 padding: 2px 0;
-                color: ${course.success ? '#28a745' : '#6c757d'};
+                color: ${statusColor};
             `;
-            courseItem.textContent = `${course.id} ${course.success ? '✅' : '⏳'}`;
+            courseItem.textContent = `${course.id} ${statusIcon}`;
             courseList.appendChild(courseItem);
         });
 
         // 运行时间
-        const runTime = this.startTime ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
-        const hours = Math.floor(runTime / 3600);
-        const minutes = Math.floor((runTime % 3600) / 60);
-        const seconds = runTime % 60;
+        const runTime = this.calculateRunTime();
+        const formattedTime = this.formatRunTime(runTime);
 
         const timeInfo = document.createElement('div');
-        timeInfo.innerHTML = `<strong>运行时间:</strong> ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        timeInfo.innerHTML = `<strong>运行时间:</strong> ${formattedTime}`;
         timeInfo.style.marginTop = '8px';
 
         statusContainer.innerHTML = '';
@@ -316,28 +331,82 @@ class UIController {
      * @param {HTMLElement} element - 要拖拽的元素
      */
     makeDraggable(element) {
-        let offsetX = 0;
-        let offsetY = 0;
-        let isMouseDown = false;
+        let isDragging = false;
+        let currentX;
+        let currentY;
+        let initialX;
+        let initialY;
+        let xOffset = 0;
+        let yOffset = 0;
 
-        element.addEventListener('mousedown', (e) => {
-            isMouseDown = true;
-            offsetX = e.clientX - element.offsetLeft;
-            offsetY = e.clientY - element.offsetTop;
-            element.style.cursor = 'grabbing';
-        });
+        // 检查是否为移动设备
+        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
-        document.addEventListener('mousemove', (e) => {
-            if (isMouseDown) {
-                element.style.left = `${e.clientX - offsetX}px`;
-                element.style.top = `${e.clientY - offsetY}px`;
+        // 鼠标事件处理
+        element.addEventListener('mousedown', dragStart);
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('mouseup', dragEnd);
+
+        // 触摸事件处理（移动设备支持）
+        if (isTouchDevice) {
+            element.addEventListener('touchstart', dragStart, { passive: false });
+            document.addEventListener('touchmove', drag, { passive: false });
+            element.addEventListener('touchend', dragEnd);
+        }
+
+        function dragStart(e) {
+            // 防止在标题栏以外区域拖拽
+            if (e.target.closest('.status-title-bar') || e.target.closest('.main-title-bar')) {
+                if (e.type === "touchstart") {
+                    initialX = e.touches[0].clientX - xOffset;
+                    initialY = e.touches[0].clientY - yOffset;
+                } else {
+                    initialX = e.clientX - xOffset;
+                    initialY = e.clientY - yOffset;
+                }
+
+                if (e.target === element || element.contains(e.target)) {
+                    isDragging = true;
+                    element.style.cursor = 'grabbing';
+                    element.style.userSelect = 'none';
+                }
             }
-        });
+        }
 
-        document.addEventListener('mouseup', () => {
-            isMouseDown = false;
+        function drag(e) {
+            if (isDragging) {
+                e.preventDefault();
+
+                if (e.type === "touchmove") {
+                    currentX = e.touches[0].clientX - initialX;
+                    currentY = e.touches[0].clientY - initialY;
+                } else {
+                    currentX = e.clientX - initialX;
+                    currentY = e.clientY - initialY;
+                }
+
+                xOffset = currentX;
+                yOffset = currentY;
+
+                // 边界检查
+                const rect = element.getBoundingClientRect();
+                const maxX = window.innerWidth - rect.width;
+                const maxY = window.innerHeight - rect.height;
+
+                const newX = Math.max(0, Math.min(currentX, maxX));
+                const newY = Math.max(0, Math.min(currentY, maxY));
+
+                element.style.transform = `translate(${newX}px, ${newY}px)`;
+            }
+        }
+
+        function dragEnd(e) {
+            initialX = currentX;
+            initialY = currentY;
+            isDragging = false;
             element.style.cursor = 'grab';
-        });
+            element.style.userSelect = 'auto';
+        }
 
         // 设置初始鼠标样式
         element.style.cursor = 'grab';
@@ -443,12 +512,14 @@ class UIController {
 
         // 创建标题栏容器
         const titleBar = document.createElement('div');
+        titleBar.className = 'main-title-bar';
         titleBar.style.cssText = `
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin: 0 0 15px 0;
             position: relative;
+            cursor: grab;
         `;
 
         // 标题文字
@@ -492,8 +563,41 @@ class UIController {
             this.cycleUIState();
         });
 
+        // 关闭按钮
+        const closeButton = document.createElement('button');
+        closeButton.textContent = '✕';
+        closeButton.style.cssText = `
+            background: none;
+            border: none;
+            font-size: 20px;
+            font-weight: bold;
+            color: #dc3545;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 3px;
+            margin-left: 5px;
+            line-height: 1;
+            transition: background-color 0.2s;
+        `;
+        closeButton.title = '关闭程序';
+
+        // 添加悬停效果
+        closeButton.addEventListener('mouseenter', () => {
+            closeButton.style.backgroundColor = '#f8d9da';
+        });
+
+        closeButton.addEventListener('mouseleave', () => {
+            closeButton.style.backgroundColor = 'transparent';
+        });
+
+        closeButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showCloseConfirmation();
+        });
+
         titleBar.appendChild(title);
         titleBar.appendChild(minimizeButton);
+        titleBar.appendChild(closeButton); // 新增关闭按钮
         this.panel.appendChild(titleBar);
 
         // 课程输入容器
@@ -562,8 +666,7 @@ class UIController {
             border-color: #6c757d;
         `;
         statusButton.onclick = () => {
-            const status = courseManager.getStatus();
-            alert(`选课状态：\n总课程数：${status.totalCourses}\n成功数量：${status.successCount}\n运行状态：${status.isRunning ? '运行中' : '已停止'}`);
+            this.showStatusModal();
         };
 
         // 重置按钮
@@ -576,13 +679,7 @@ class UIController {
             border-color: #ffc107;
         `;
         resetButton.onclick = () => {
-            if (confirm('确定要重置所有状态吗？')) {
-                courseManager.reset();
-                this.container.innerHTML = '';
-                this.container.appendChild(this.createCourseInput(0));
-                this.startButton.disabled = false;
-                this.addButton.disabled = false;
-            }
+            this.showResetConfirmation();
         };
 
         // 按钮容器
@@ -661,18 +758,32 @@ class UIController {
 
         // 课程状态变化监听器
         document.addEventListener('courses:started', () => {
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 选课开始事件触发`);
             this.isSelectingCourses = true;
-            this.startTime = Date.now();
-            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程开始，UI状态更新为选课中`);
+            this.startTime = Date.now(); // 新选课开始时清零重新开始
+            this.stopTime = null;
+
             // 如果当前是悬浮按钮状态，自动展开到主面板
             if (this.currentState === UI_STATES.FLOATING_BUTTON) {
                 this.transitionToState(UI_STATES.FULL_PANEL);
             }
+
+            // 自动展开状态面板（如果存在）
+            if (this.statusModal && document.body.contains(this.statusModal)) {
+                this.statusModal.style.display = 'block';
+            }
         });
 
         document.addEventListener('courses:stopped', () => {
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 选课停止事件触发`);
             this.isSelectingCourses = false;
-            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程停止，UI状态更新为非选课中`);
+            this.stopTime = Date.now(); // 记录停止时间
+
+            // 立即更新状态面板显示
+            if (this.statusModal && document.body.contains(this.statusModal)) {
+                this.updateStatusModal();
+            }
+
             // 如果当前是迷你面板状态，自动最小化到悬浮按钮
             if (this.currentState === UI_STATES.MINIMIZED_STATUS) {
                 this.transitionToState(UI_STATES.FLOATING_BUTTON);
@@ -719,6 +830,493 @@ class UIController {
             this.stopButton.disabled = !isRunning;
             this.addButton.disabled = isRunning;
         }
+    }
+
+    /**
+     * 显示状态详情弹窗
+     */
+    showStatusModal() {
+        try {
+            // 单例检查 - 防止重复创建
+            if (this.statusModal && document.body.contains(this.statusModal)) {
+                console.warn(`${CONFIG.LOG.LOG_PREFIX} 状态面板已存在，不重复创建`);
+                // 将现有面板置于前台
+                this.statusModal.style.zIndex = '10002';
+                return;
+            }
+
+            const statusModal = document.createElement('div');
+        statusModal.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 2px solid #6c757d;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 10001;
+            width: 550px;
+            max-height: 70vh;
+            overflow-y: auto;
+            font-family: Arial, sans-serif;
+            resize: both;
+            min-width: 400px;
+            min-height: 300px;
+        `;
+
+        // 添加拖拽功能
+        this.makeDraggable(statusModal);
+
+        // 确保拖拽时不会意外关闭
+        statusModal.addEventListener('mousedown', (e) => {
+            if (e.target === statusModal || statusModal.contains(e.target)) {
+                e.stopPropagation();
+            }
+        });
+
+        // 创建标题栏
+        const titleBar = document.createElement('div');
+        titleBar.className = 'status-title-bar';
+        titleBar.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: grab;
+        `;
+
+        const title = document.createElement('h4');
+        title.textContent = '📊 选课状态详情';
+        title.style.cssText = `
+            margin: 0;
+            color: #333;
+            font-size: 18px;
+        `;
+
+        const closeButton = document.createElement('button');
+        closeButton.textContent = '✕';
+        closeButton.style.cssText = `
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #6c757d;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+
+        closeButton.addEventListener('mouseenter', () => {
+            closeButton.style.color = '#000';
+        });
+
+        closeButton.addEventListener('mouseleave', () => {
+            closeButton.style.color = '#6c757d';
+        });
+
+        titleBar.appendChild(title);
+        titleBar.appendChild(closeButton);
+
+        // 创建状态内容容器
+        const statusContent = document.createElement('div');
+        statusContent.id = 'status-modal-content';
+
+        statusModal.appendChild(titleBar);
+        statusModal.appendChild(statusContent);
+        document.body.appendChild(statusModal);
+
+        // 设置statusModal引用和ID
+        this.statusModal = statusModal;
+        statusModal.id = 'course-status-modal';
+
+        // 启动状态更新定时器
+        this.startStatusModalUpdates();
+
+        // 关闭事件处理
+        const closeModal = () => {
+            this.stopStatusModalUpdates();
+            this.statusModal = null; // 清除引用
+            if (document.body.contains(statusModal)) {
+                document.body.removeChild(statusModal);
+            }
+        };
+
+        closeButton.onclick = closeModal;
+
+        // ESC键关闭
+        const escHandler = (e) => {
+            if (e.key === 'Escape' && document.body.contains(statusModal)) {
+                closeModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+
+        // 点击背景不关闭（确保用户主动关闭）
+        statusModal.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        } catch (error) {
+            console.error(`${CONFIG.LOG.LOG_PREFIX} 创建状态面板失败:`, error);
+            this.showNotification('状态面板创建失败，请重试', 'error');
+        }
+    }
+
+    /**
+     * 启动状态弹窗更新
+     */
+    startStatusModalUpdates() {
+        this.statusModalUpdateInterval = setInterval(() => {
+            this.updateStatusModal();
+        }, 1000);
+        // 立即更新一次
+        this.updateStatusModal();
+    }
+
+    /**
+     * 更新状态弹窗内容
+     */
+    updateStatusModal() {
+        const statusContainer = document.getElementById('status-modal-content');
+        if (!statusContainer) return;
+
+        const status = courseManager.getStatus();
+        const runTime = this.calculateRunTime();
+        const formattedTime = this.formatRunTime(runTime);
+
+        let contentHTML = `
+            <div style="margin-bottom: 20px;">
+                <h5 style="margin: 0 0 10px 0; color: #495057;">📈 总体状态</h5>
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; border-left: 4px solid ${status.isRunning ? '#28a745' : '#dc3545'};">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span><strong>运行状态:</strong></span>
+                        <span style="color: ${status.isRunning ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                            ${status.isRunning ? '🟢 选课进行中' : '🔴 已停止'}
+                        </span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span><strong>总课程数:</strong></span>
+                        <span>${status.totalCourses}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span><strong>成功数量:</strong></span>
+                        <span style="color: ${status.successCount === status.totalCourses ? '#28a745' : '#ffc107'};">
+                            ${status.successCount}
+                        </span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span><strong>运行时间:</strong></span>
+                        <span>${formattedTime}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (status.courses.length > 0) {
+            contentHTML += `
+                <div>
+                    <h5 style="margin: 0 0 10px 0; color: #495057;">📚 课程详情</h5>
+                    <div style="background: #f8f9fa; padding: 12px; border-radius: 6px;">
+            `;
+
+            status.courses.forEach((course, index) => {
+                // 修正状态显示逻辑，增加"待进行"状态
+                let statusIcon, statusColor, statusText, statusBgColor;
+                if (course.success) {
+                    statusIcon = '✅';
+                    statusColor = '#28a745';
+                    statusText = '已成功';
+                    statusBgColor = '#d4edda';
+                } else if (status.isRunning) {
+                    statusIcon = '⏳';
+                    statusColor = '#007bff';
+                    statusText = '进行中';
+                    statusBgColor = '#d1ecf1';
+                } else {
+                    statusIcon = '⏸️';
+                    statusColor = '#6c757d';
+                    statusText = '待进行';
+                    statusBgColor = '#f8f9fa';
+                }
+
+                contentHTML += `
+                    <div style="padding: 8px 0; ${index < status.courses.length - 1 ? 'border-bottom: 1px solid #dee2e6;' : ''}">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-weight: bold; color: #495057;">
+                                ${statusIcon} ${course.id}
+                            </span>
+                            <span style="color: ${statusColor}; font-size: 12px; padding: 2px 8px; background: ${statusBgColor}; border-radius: 12px;">
+                                ${statusText}
+                            </span>
+                        </div>
+                        <div style="font-size: 11px; color: #6c757d;">
+                            实验班数量: ${course.experimentalClassCount} |
+                            就绪状态: ${course.glReady ? '✅ 已就绪' : '⏳ 加载中'}
+                        </div>
+                    </div>
+                `;
+            });
+
+            contentHTML += `
+                    </div>
+                </div>
+            `;
+        } else {
+            contentHTML += `
+                <div style="text-align: center; padding: 20px; color: #6c757d; background: #f8f9fa; border-radius: 6px;">
+                    <div style="font-size: 16px; margin-bottom: 4px;">📝</div>
+                    <div>暂无课程，请先添加课程</div>
+                </div>
+            `;
+        }
+
+        statusContainer.innerHTML = contentHTML;
+    }
+
+    /**
+     * 停止状态弹窗更新
+     */
+    stopStatusModalUpdates() {
+        if (this.statusModalUpdateInterval) {
+            clearInterval(this.statusModalUpdateInterval);
+            this.statusModalUpdateInterval = null;
+        }
+    }
+
+    /**
+     * 显示重置确认弹窗
+     */
+    showResetConfirmation() {
+        const status = courseManager.getStatus();
+        const isRunning = status.isRunning;
+        const hasActiveCourses = status.courses.some(course => !course.success);
+
+        const confirmDialog = document.createElement('div');
+        confirmDialog.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 3px solid #dc3545;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 10001;
+            min-width: 350px;
+            font-family: Arial, sans-serif;
+            animation: shake 0.5s ease-in-out;
+        `;
+
+        // 添加震动动画样式
+        if (!document.getElementById('shake-animation-styles')) {
+            const shakeStyle = document.createElement('style');
+            shakeStyle.id = 'shake-animation-styles';
+            shakeStyle.textContent = `
+                @keyframes shake {
+                    0%, 100% { transform: translate(-50%, -50%) translateX(0); }
+                    25% { transform: translate(-50%, -50%) translateX(-10px); }
+                    75% { transform: translate(-50%, -50%) translateX(10px); }
+                }
+            `;
+            document.head.appendChild(shakeStyle);
+        }
+
+        let warningContent = '';
+        let warningLevel = '';
+
+        if (isRunning && hasActiveCourses) {
+            warningLevel = 'high';
+            warningContent = `
+                <div style="background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin: 10px 0; border: 1px solid #f5c6cb;">
+                    <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                        <span style="font-size: 18px; margin-right: 8px;">⚠️</span>
+                        <strong>极度危险操作警告</strong>
+                    </div>
+                    选课正在进行中且有未完成的课程！
+                </div>
+            `;
+        } else if (isRunning) {
+            warningLevel = 'medium';
+            warningContent = `
+                <div style="background: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; margin: 10px 0; border: 1px solid #ffeaa7;">
+                    <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                        <span style="font-size: 18px; margin-right: 8px;">⚠️</span>
+                        <strong>警告</strong>
+                    </div>
+                    选课正在进行中！
+                </div>
+            `;
+        }
+
+        const impactList = [];
+        if (isRunning) impactList.push('• 停止正在进行的选课进程');
+        if (status.totalCourses > 0) {
+            impactList.push(`• 清除所有 ${status.totalCourses} 门课程数据`);
+            impactList.push(`• 丢失 ${status.successCount} 门已成功的选课结果`);
+        }
+        if (status.totalCourses > 0) impactList.push('• 恢复到初始状态');
+        impactList.push('• 需要重新添加所有课程');
+
+        confirmDialog.innerHTML = `
+            <h4 style="margin: 0 0 15px 0; color: #dc3545; display: flex; align-items: center;">
+                <span style="font-size: 24px; margin-right: 10px;">🔄</span>
+                确认重置所有状态
+            </h4>
+
+            ${warningContent}
+
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #6c757d;">
+                <div style="font-weight: bold; margin-bottom: 8px; color: #495057;">当前状态摘要：</div>
+                <div style="font-size: 13px; line-height: 1.5;">
+                    • 运行状态：${isRunning ? '🟢 选课进行中' : '🔴 已停止'}<br>
+                    ${status.totalCourses > 0 ? `• 总课程数：${status.totalCourses} 门` : ''}<br>
+                    ${status.successCount > 0 ? `• 成功数量：${status.successCount} 门` : ''}<br>
+                    ${hasActiveCourses ? `• 进行中：${status.courses.filter(c => !c.success).length} 门` : ''}
+                </div>
+            </div>
+
+            <div style="background: #fff; border: 1px solid #dee2e6; padding: 12px; border-radius: 6px; margin: 15px 0;">
+                <div style="font-weight: bold; margin-bottom: 8px; color: #dc3545;">重置后将发生：</div>
+                <div style="font-size: 13px; line-height: 1.6; color: #495057;">
+                    ${impactList.join('<br>')}
+                </div>
+            </div>
+
+            ${isRunning ? `
+                <div style="background: #ffebee; color: #c62828; padding: 10px; border-radius: 4px; margin: 15px 0; font-size: 12px; text-align: center; font-weight: bold;">
+                    💡 提示：如非必要，建议先停止选课再重置
+                </div>
+            ` : ''}
+
+            <div style="text-align: center; margin-top: 20px;">
+                <button id="cancel-reset" style="
+                    margin-right: 10px;
+                    padding: 8px 20px;
+                    background: #6c757d;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: bold;
+                ">取消重置</button>
+                <button id="confirm-reset" style="
+                    padding: 8px 20px;
+                    background: #dc3545;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: bold;
+                    ${isRunning && hasActiveCourses ? 'animation: pulse 1s infinite;' : ''}
+                ">确认重置</button>
+            </div>
+        `;
+
+        // 添加脉冲动画（如果需要）
+        if (isRunning && hasActiveCourses && !document.getElementById('pulse-animation-styles')) {
+            const pulseStyle = document.createElement('style');
+            pulseStyle.id = 'pulse-animation-styles';
+            pulseStyle.textContent = `
+                @keyframes pulse {
+                    0% { background-color: #dc3545; }
+                    50% { background-color: #c82333; }
+                    100% { background-color: #dc3545; }
+                }
+            `;
+            document.head.appendChild(pulseStyle);
+        }
+
+        document.body.appendChild(confirmDialog);
+
+        // 事件绑定
+        document.getElementById('cancel-reset').onclick = () => {
+            document.body.removeChild(confirmDialog);
+        };
+
+        document.getElementById('confirm-reset').onclick = () => {
+            document.body.removeChild(confirmDialog);
+            this.executeReset();
+        };
+
+        // ESC键取消
+        const escHandler = (e) => {
+            if (e.key === 'Escape' && document.body.contains(confirmDialog)) {
+                document.body.removeChild(confirmDialog);
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+
+        // 阻止点击背景关闭
+        confirmDialog.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+    }
+
+    /**
+     * 执行重置操作
+     */
+    executeReset() {
+        console.log(`${CONFIG.LOG.LOG_PREFIX} 用户确认重置，开始执行重置操作`);
+
+        // 重置课程管理器
+        courseManager.reset();
+
+        // 重置UI状态
+        this.container.innerHTML = '';
+        this.container.appendChild(this.createCourseInput(0));
+        this.updateScrollableContainer();
+        this.updateButtonStates(false);
+
+        // 显示通知
+        this.showNotification('所有状态已重置', 'info');
+
+        console.log(`${CONFIG.LOG.LOG_PREFIX} 重置操作完成`);
+    }
+
+    /**
+     * 计算运行时间（工具方法）
+     * @returns {number} 运行时间（秒）
+     */
+    calculateRunTime() {
+        if (!this.startTime) return 0;
+
+        if (this.isSelectingCourses) {
+            // 选课进行中：计算从开始到现在的时间
+            return Math.floor((Date.now() - this.startTime) / 1000);
+        } else if (this.stopTime) {
+            // 选课已停止：计算从开始到停止的时间
+            return Math.floor((this.stopTime - this.startTime) / 1000);
+        } else {
+            // 异常情况：默认为0
+            return 0;
+        }
+    }
+
+    /**
+     * 格式化运行时间显示
+     * @param {number} seconds - 秒数
+     * @returns {string} 格式化的时间字符串 "HH:MM:SS"
+     */
+    formatRunTime(seconds) {
+        if (seconds < 0) return '00:00:00';
+
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
     /**
@@ -771,6 +1369,379 @@ class UIController {
                 }
             }, 300);
         }, 3000);
+    }
+
+    /**
+     * 显示关闭确认对话框
+     */
+    showCloseConfirmation() {
+        try {
+            // 检查是否已有确认对话框
+            if (document.getElementById('close-confirmation-dialog')) {
+                return;
+            }
+
+            // 获取当前状态
+            const status = this.courseManager.getStatus();
+            const isRunning = status.isRunning;
+            const hasActiveCourses = status.courses.some(course => !course.success);
+            const successCount = status.successCount;
+            const totalCourses = status.totalCourses;
+
+            // 根据状态确定警告级别
+            let warningLevel = 'low'; // low, medium, high
+            let warningTitle = '确认关闭';
+            let warningMessage = '关闭后将无法自动选课';
+
+            if (isRunning && hasActiveCourses) {
+                warningLevel = 'high';
+                warningTitle = '⚠️ 严重警告';
+                warningMessage = `正在选课中！关闭将导致${totalCourses - successCount}门课程无法完成选课！`;
+            } else if (hasActiveCourses) {
+                warningLevel = 'medium';
+                warningTitle = '⚠️ 重要提醒';
+                warningMessage = `还有${totalCourses - successCount}门课程未完成选课！`;
+            }
+
+            // 确定颜色方案
+            const colorSchemes = {
+                low: {
+                    bg: '#f8f9fa',
+                    border: '#6c757d',
+                    title: '#343a40',
+                    buttonBg: '#6c757d'
+                },
+                medium: {
+                    bg: '#fff3cd',
+                    border: '#ffc107',
+                    title: '#856404',
+                    buttonBg: '#ffc107'
+                },
+                high: {
+                    bg: '#f8d7da',
+                    border: '#dc3545',
+                    title: '#721c24',
+                    buttonBg: '#dc3545'
+                }
+            };
+
+            const colors = colorSchemes[warningLevel];
+
+            // 创建确认对话框
+            const confirmDialog = document.createElement('div');
+            confirmDialog.id = 'close-confirmation-dialog';
+            confirmDialog.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.6);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10003;
+                font-family: Arial, sans-serif;
+                animation: fadeIn 0.3s ease-out;
+            `;
+
+            // 创建对话框内容
+            const dialogContent = document.createElement('div');
+            dialogContent.style.cssText = `
+                background: ${colors.bg};
+                border: 2px solid ${colors.border};
+                border-radius: 12px;
+                padding: 25px;
+                max-width: 450px;
+                width: 90%;
+                text-align: center;
+                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+                animation: slideDown 0.3s ease-out;
+            `;
+
+            dialogContent.innerHTML = `
+                <h3 style="margin: 0 0 15px 0; color: ${colors.title}; font-size: 20px; font-weight: bold;">
+                    ${warningTitle}
+                </h3>
+                <div style="margin-bottom: 20px; color: #343a40; line-height: 1.5;">
+                    <div style="margin-bottom: 15px; font-size: 16px;">
+                        ${warningMessage}
+                    </div>
+                    <div style="background: rgba(0,0,0,0.05); padding: 12px; border-radius: 6px; margin: 15px 0;">
+                        <div style="font-size: 14px; margin-bottom: 8px;">
+                            <strong>当前状态：</strong>
+                        </div>
+                        <div style="font-size: 13px; color: #6c757d;">
+                            • 总课程数：${totalCourses} 门<br>
+                            • 已成功：${successCount} 门<br>
+                            • 选课状态：${isRunning ? '正在运行' : '已停止'}<br>
+                            • 关闭后：所有功能将完全停止
+                        </div>
+                    </div>
+                    <div style="font-size: 14px; color: #6c757d; font-style: italic;">
+                        确定要关闭选课助手程序吗？
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 20px;">
+                    <button id="cancel-close" style="
+                        margin-right: 12px;
+                        padding: 10px 22px;
+                        background: #6c757d;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        font-weight: bold;
+                        transition: background-color 0.2s;
+                    " onmouseover="this.style.backgroundColor='#5a6268'"
+                       onmouseout="this.style.backgroundColor='#6c757d'">取消</button>
+                    <button id="confirm-close" style="
+                        padding: 10px 22px;
+                        background: ${colors.buttonBg};
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        font-weight: bold;
+                        transition: background-color 0.2s;
+                        ${warningLevel === 'high' ? 'animation: pulse-red 1s infinite;' : ''}
+                    " onmouseover="this.style.backgroundColor='${
+                        warningLevel === 'high' ? '#c82333' :
+                        warningLevel === 'medium' ? '#e0a800' : '#5a6268'
+                    }'" onmouseout="this.style.backgroundColor='${colors.buttonBg}'">
+                        确认关闭
+                    </button>
+                </div>
+            `;
+
+            confirmDialog.appendChild(dialogContent);
+
+            // 添加动画样式（如果需要）
+            if (warningLevel === 'high' && !document.getElementById('pulse-red-animation-styles')) {
+                const pulseRedStyle = document.createElement('style');
+                pulseRedStyle.id = 'pulse-red-animation-styles';
+                pulseRedStyle.textContent = `
+                    @keyframes pulse-red {
+                        0% { background-color: #dc3545; box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+                        50% { background-color: #c82333; box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
+                        100% { background-color: #dc3545; box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+                    }
+                    @keyframes fadeIn {
+                        from { opacity: 0; }
+                        to { opacity: 1; }
+                    }
+                    @keyframes slideDown {
+                        from { transform: translateY(-30px); opacity: 0; }
+                        to { transform: translateY(0); opacity: 1; }
+                    }
+                `;
+                document.head.appendChild(pulseRedStyle);
+            }
+
+            document.body.appendChild(confirmDialog);
+
+            // 事件绑定
+            document.getElementById('cancel-close').onclick = () => {
+                try {
+                    document.body.removeChild(confirmDialog);
+                } catch (error) {
+                    console.error('移除关闭确认对话框失败:', error);
+                }
+            };
+
+            document.getElementById('confirm-close').onclick = () => {
+                try {
+                    document.body.removeChild(confirmDialog);
+                    this.executeClose();
+                } catch (error) {
+                    console.error('关闭程序失败:', error);
+                }
+            };
+
+            // 点击背景关闭（低风险时）
+            if (warningLevel === 'low') {
+                confirmDialog.onclick = (event) => {
+                    if (event.target === confirmDialog) {
+                        document.body.removeChild(confirmDialog);
+                    }
+                };
+            }
+
+            // ESC 键关闭
+            const handleEscKey = (event) => {
+                if (event.key === 'Escape' && document.body.contains(confirmDialog)) {
+                    document.body.removeChild(confirmDialog);
+                    document.removeEventListener('keydown', handleEscKey);
+                }
+            };
+            document.addEventListener('keydown', handleEscKey);
+
+        } catch (error) {
+            console.error('显示关闭确认对话框失败:', error);
+            this.showNotification('显示确认对话框失败，请重试', 'error');
+        }
+    }
+
+    /**
+     * 执行关闭程序操作
+     */
+    executeClose() {
+        try {
+            console.log('🛑 [关闭] 开始关闭选课助手程序...');
+
+            // 1. 停止选课程序
+            if (this.courseManager) {
+                try {
+                    this.courseManager.stopLoop();
+                    console.log('🛑 [关闭] 选课程序已停止');
+                } catch (error) {
+                    console.error('🛑 [关闭] 停止选课程序失败:', error);
+                }
+            }
+
+            // 2. 清理状态面板更新定时器
+            if (this.statusModalUpdateInterval) {
+                try {
+                    clearInterval(this.statusModalUpdateInterval);
+                    this.statusModalUpdateInterval = null;
+                    console.log('🛑 [关闭] 状态面板更新定时器已清理');
+                } catch (error) {
+                    console.error('🛑 [关闭] 清理状态面板定时器失败:', error);
+                }
+            }
+
+            // 3. 移除主面板
+            if (this.controlPanel && document.body.contains(this.controlPanel)) {
+                try {
+                    document.body.removeChild(this.controlPanel);
+                    this.controlPanel = null;
+                    console.log('🛑 [关闭] 主控制面板已移除');
+                } catch (error) {
+                    console.error('🛑 [关闭] 移除主面板失败:', error);
+                }
+            }
+
+            // 4. 移除状态面板
+            if (this.statusModal && document.body.contains(this.statusModal)) {
+                try {
+                    document.body.removeChild(this.statusModal);
+                    this.statusModal = null;
+                    console.log('🛑 [关闭] 状态面板已移除');
+                } catch (error) {
+                    console.error('🛑 [关闭] 移除状态面板失败:', error);
+                }
+            }
+
+            // 5. 清理全局引用
+            try {
+                // 清理 window 上的引用
+                if (typeof window !== 'undefined') {
+                    delete window.courseManager;
+                    delete window.uiController;
+                    delete window.stopLoop;
+                    console.log('🛑 [关闭] 全局引用已清理');
+                }
+            } catch (error) {
+                console.error('🛑 [关闭] 清理全局引用失败:', error);
+            }
+
+            // 6. 显示关闭成功消息
+            const successMessage = document.createElement('div');
+            successMessage.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: linear-gradient(135deg, #28a745, #20c997);
+                color: white;
+                padding: 20px 30px;
+                border-radius: 10px;
+                font-family: Arial, sans-serif;
+                font-size: 16px;
+                font-weight: bold;
+                z-index: 10004;
+                box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+                animation: fadeInOut 2s ease-in-out;
+            `;
+            successMessage.innerHTML = `
+                <div style="text-align: center;">
+                    <div style="font-size: 20px; margin-bottom: 8px;">✅</div>
+                    <div>选课助手已安全关闭</div>
+                    <div style="font-size: 12px; margin-top: 8px; opacity: 0.9;">
+                        感谢使用，祝您选课顺利！
+                    </div>
+                </div>
+            `;
+
+            // 添加消失动画
+            if (!document.getElementById('close-success-animation-styles')) {
+                const successStyle = document.createElement('style');
+                successStyle.id = 'close-success-animation-styles';
+                successStyle.textContent = `
+                    @keyframes fadeInOut {
+                        0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+                        20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                        80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                        100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+                    }
+                `;
+                document.head.appendChild(successStyle);
+            }
+
+            document.body.appendChild(successMessage);
+
+            // 2秒后移除成功消息
+            setTimeout(() => {
+                try {
+                    if (successMessage.parentNode) {
+                        document.body.removeChild(successMessage);
+                    }
+                } catch (error) {
+                    console.error('移除关闭成功消息失败:', error);
+                }
+            }, 2000);
+
+            // 7. 记录关闭日志
+            console.log('✅ [关闭] 选课助手程序已完全关闭');
+            console.log('🎓 [感谢] 感谢使用中南民族大学选课助手！');
+            console.log('📝 [提醒] 如需重新使用，请刷新页面后重新运行脚本');
+
+        } catch (error) {
+            console.error('🚫 [关闭] 执行关闭程序时发生错误:', error);
+
+            // 显示错误消息
+            const errorMessage = document.createElement('div');
+            errorMessage.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #dc3545;
+                color: white;
+                padding: 15px 25px;
+                border-radius: 8px;
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+                z-index: 10004;
+                box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+            `;
+            errorMessage.textContent = '关闭程序时发生错误，请手动刷新页面';
+
+            document.body.appendChild(errorMessage);
+
+            // 3秒后移除错误消息
+            setTimeout(() => {
+                try {
+                    if (errorMessage.parentNode) {
+                        document.body.removeChild(errorMessage);
+                    }
+                } catch (cleanupError) {
+                    console.error('清理错误消息失败:', cleanupError);
+                }
+            }, 3000);
+        }
     }
 }
 

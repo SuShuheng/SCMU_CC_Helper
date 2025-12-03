@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.1
+ * @version 1.0.2
  * @description 专为中南民族大学学生设计的自动化课程注册助手配置模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -137,6 +137,16 @@ export const LOG_CONFIG = {
     }
 };
 
+// z-index层级管理配置
+export const Z_INDEX_CONFIG = {
+    BASE_LAYER: 9999,        // 基础UI组件（主面板、悬浮按钮、迷你面板）
+    NOTIFICATION: 10000,     // 通知消息
+    MODAL: 10001,           // 普通弹窗（状态详情弹窗）
+    DIALOG: 10002,          // 确认对话框（删除课程、重置确认）
+    OVERLAY: 10003,         // 全屏遮罩（关闭程序确认）
+    TOPMOST: 10004          // 最高层级（关闭成功消息）
+};
+
 // 开发者配置
 export const DEV_CONFIG = {
     // 是否为开发模式
@@ -152,7 +162,8 @@ export const CONFIG = {
     UI: UI_CONFIG,
     HTTP: HTTP_CONFIG,
     LOG: LOG_CONFIG,
-    DEV: DEV_CONFIG
+    DEV: DEV_CONFIG,
+    Z_INDEX: Z_INDEX_CONFIG
 };
 
 // 默认导出配置对象
