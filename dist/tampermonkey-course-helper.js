@@ -1,3 +1,15 @@
+// ==UserScript==
+// @name         SCMU自动选课助手
+// @namespace    https://github.com/sushuheng/SCMU_CC_Helper
+// @version      1.0.3
+// @description  专为中南民族大学学生设计的自动化课程注册助手
+// @author       SuShuHeng
+// @license      APACHE 2.0
+// @match        https://xk.webvpn.scuec.edu.cn/xsxk/*
+// @match        https://xk.webvpn.scuec.edu.cn/*
+// @run-at       document-idle
+// @grant        none
+// ==/UserScript==
 /**
  * 中南民族大学自动选课助手
  * 单文件版本 - 直接复制粘贴到浏览器控制台使用
@@ -2673,6 +2685,7 @@
             }, 3000);
         }
     }
+// ==================== Tampermonkey环境检测 ====================    function initializeScript() {        try {            // 验证运行环境            if (!window.location.hostname.includes("scuec.edu.cn")) {                console.warn("[选课助手] 非目标域名，跳过初始化");                return;            }            // 检查是否已经初始化过，避免重复加载            if (window.courseManager || window.uiController) {                console.log("[选课助手] 脚本已初始化，跳过重复加载");                return;            }            console.log("[选课助手] Tampermonkey环境初始化开始");
 
     // ==================== 主程序入口 ====================
 
@@ -2708,6 +2721,7 @@ Licensed under the Apache License, Version 2.0
    - courseManager: 选课管理器
    - uiController: 界面控制器
    - stopLoop(): 停止选课
+} catch (error) {            console.error("[选课助手] 初始化过程中发生错误:", error);            // 尝试清理可能已创建的全局变量            if (window.courseManager) delete window.courseManager;            if (window.uiController) delete window.uiController;            if (window.stopLoop) delete window.stopLoop;        }    }    // ==================== Tampermonkey初始化调度 ====================    // Tampermonkey环境下使用document-idle时机    if (document.readyState === "loading") {        document.addEventListener("DOMContentLoaded", () => {            setTimeout(initializeScript, 500);        });    } else if (document.readyState === "interactive") {        document.addEventListener("load", () => {            setTimeout(initializeScript, 500);        });    } else {        // 页面已完全加载，延迟500ms确保稳定        setTimeout(initializeScript, 500);    }
 ⚠️ 重要提醒：请仅在合法的选课时间使用本工具！
     `);
 

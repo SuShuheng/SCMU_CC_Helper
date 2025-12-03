@@ -1,6 +1,7 @@
 # SCMU_CC_Helper
 
------
+---
+
 # 中南民族大学自动选课助手
 
 🚀 一个专为中南民族大学（SCMU）学生设计的自动化课程注册助手，帮助学生快速抢到心仪的课程。
@@ -22,18 +23,19 @@
 使用 `dist/course-helper.js` 单文件版本，适合初学者快速上手：
 
 1. **登录选课系统**
+
    - 打开浏览器，访问：[https://xk.webvpn.scuec.edu.cn/xsxk/](https://xk.webvpn.scuec.edu.cn/xsxk/)
    - 使用你的学号和密码登录
-
 2. **打开开发者工具**
+
    - 按下 `F12` 键打开浏览器开发者工具
    - 切换到 "Console" (控制台) 标签页
-
 3. **复制粘贴代码**
+
    - 复制 `dist/course-helper.js` 的完整内容
    - 粘贴到控制台中，按回车执行
-
 4. **开始选课**
+
    - 页面右上角会出现选课助手控制面板
    - 输入课程ID，点击"开始选课"即可
 
@@ -44,25 +46,26 @@
 使用 `src/` 目录下的模块化脚本，适合有一定JavaScript基础的用户：
 
 1. **下载项目文件**
+
    ```bash
    git clone https://github.com/sushuheng/scmu_cc_helper.git
    cd scmu_cc_helper
    ```
-
 2. **在浏览器中依次导入模块**
+
    ```javascript
    // 在控制台中依次执行
    import { CONFIG } from './src/config.js';
    import { courseManager } from './src/course-registration.js';
    import { uiController } from './src/ui-controller.js';
    ```
-
 3. **初始化界面**
+
    ```javascript
    uiController.initialize();
    ```
-
 4. **手动控制选课过程**
+
    ```javascript
    // 添加课程
    courseManager.addCourse('你的课程ID');
@@ -79,16 +82,50 @@
 
 **优点**：模块化设计，可自定义功能，适合二次开发
 
-### 两种版本对比
+### 方法三：油猴版本 (推荐自动运行)
 
-| 特性 | 单文件版本 | 模块化版本 |
-|------|------------|------------|
-| 使用难度 | ⭐ 简单 | ⭐⭐⭐ 中等 |
-| 功能完整性 | ✅ 完整 | ✅ 完整 |
-| 可定制性 | ❌ 不可定制 | ✅ 高度可定制 |
-| 文件大小 | 单一文件 | 多个模块 |
-| 适合人群 | 新手用户 | 开发者用户 |
-| 二次开发 | ❌ 不支持 | ✅ 完全支持 |
+使用 `dist/tampermonkey-course-helper.js` 油猴脚本版本，实现自动化加载运行：
+
+1. **安装油猴扩展**
+
+   - Chrome浏览器：访问 [Chrome Web Store](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo) 安装Tampermonkey
+   - Firefox浏览器：访问 [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/tampermonkey/) 安装Tampermonkey
+   - Edge浏览器：访问 [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd) 安装Tampermonkey
+2. **创建新脚本**
+
+   - 点击浏览器工具栏中的油猴图标
+   - 选择"管理面板"，进入脚本管理页面
+   - 点击"➕"创建新脚本按钮
+3. **复制粘贴代码**
+
+   - 清除编辑器中的默认模板代码
+   - 复制 `dist/tampermonkey-course-helper.js` 的完整内容
+   - 粘贴到油猴编辑器中
+4. **保存并启用**
+
+   - 按 `Ctrl+S` 保存脚本
+   - 确保脚本开关处于启用状态
+   - 脚本将自动在选课系统页面运行
+5. **访问选课系统**
+
+   - 打开浏览器访问：[https://xk.webvpn.scuec.edu.cn/xsxk/](https://xk.webvpn.scuec.edu.cn/xsxk/)
+   - 登录你的学号和密码
+   - 页面右上角会自动出现选课助手控制面板
+   - 直接开始使用，无需手动执行任何代码
+
+**优点**：自动运行，无需手动操作，一次安装永久使用，最适合日常使用
+
+### 三种版本对比
+
+| 特性       | 单文件版本  | 模块化版本    | 油猴版本    |
+| ---------- | ----------- | ------------- | ----------- |
+| 使用难度   | ⭐ 简单     | ⭐⭐⭐ 中等   | ⭐⭐ 简单   |
+| 功能完整性 | ✅ 完整     | ✅ 完整       | ✅ 完整     |
+| 可定制性   | ❌ 不可定制 | ✅ 高度可定制 | ⭐⭐ 有限   |
+| 自动运行   | ❌ 手动执行 | ❌ 手动执行   | ✅ 自动运行 |
+| 安装复杂度 | ⭐⭐ 简单   | ⭐⭐⭐ 中等   | ⭐ 简单     |
+| 适合人群   | 新手用户    | 开发者用户    | 所有用户    |
+| 二次开发   | ❌ 不支持   | ✅ 完全支持   | ⭐ 有限支持 |
 
 ## 📋 系统要求
 
@@ -96,20 +133,22 @@
 - **JavaScript**: 支持ES6+ (ECMAScript 2015+)
 - **网络**: 稳定的互联网连接
 - **权限**: 已登录中南民族大学选课系统
+- **扩展**: 使用油猴版本需安装Tampermonkey扩展程序
 
 ### 🎮 基本操作说明
 
 1. **添加课程**
+
    - 在"输入课程ID"框中输入要抢的课程ID
    - 可选填入课程名称便于识别
    - 点击"添加更多课程"可继续添加其他课程
-
 2. **开始选课**
+
    - 确认已输入所有要抢的课程ID
    - 点击"开始选课"按钮
    - 系统会自动开始监控并选课
-
 3. **监控进度**
+
    - 控制台会显示实时的选课日志
    - 点击"查看状态"查看选课进度
    - 成功抢到的课程会在日志中显示✅
@@ -154,7 +193,8 @@ scmu_cc_helper/
 ├── examples/                     # 示例代码
 │   └── usage-examples.js         # 使用示例
 ├── dist/                         # 发布文件
-│   └── course-helper.min.js      # 压缩版（可选）
+│   ├── course-helper.js          # 单文件版本
+│   └── tampermonkey-course-helper.js  # 油猴脚本版本
 └── README.md                     # 项目说明文档
 ```
 
@@ -181,11 +221,13 @@ scmu_cc_helper/
 ## ⚠️ 重要提醒
 
 ### 安全须知
+
 - 本工具仅用于合法的课程注册目的
 - 请遵守学校选课系统的相关规定
 - 不要过度频繁地请求，以免给服务器造成压力
 
 ### 使用建议
+
 - 提前测试，熟悉工具操作
 - 准备好多门备选课程
 - 选课成功后及时停止程序
@@ -196,12 +238,14 @@ scmu_cc_helper/
 欢迎提交Issue和Pull Request来改进这个项目！
 
 ### 开发环境设置
+
 1. 克隆本项目
 2. 在浏览器中测试修改后的代码
 3. 确保所有功能正常工作
 4. 提交Pull Request
 
 ### 代码规范
+
 - 使用ES6+语法
 - 添加详细的中文注释
 - 遵循模块化设计原则
@@ -242,4 +286,4 @@ scmu_cc_helper/
 
 ---
 
-*最后更新时间: 2025年11月*# SCMU_CC_Helper
+*最后更新时间: 2025年12月3日*# SCMU_CC_Helper
