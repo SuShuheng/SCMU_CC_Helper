@@ -1,230 +1,504 @@
-# 📚 API参考文档
+# 🔧 API 参考文档 (V1.0.4)
 
-> 🔍 **开发者指南** - 抢课助手API详细说明
+> 📚 **开发者指南**
+> 这份文档详细介绍了抢课助手 V1.0.4 版本的 API、类和方法，适合进行二次开发和定制。
 
-## 目录
+## 📋 目录
 
-1. [核心类API](#核心类api)
-2. [配置API](#配置api)
-3. [工具函数API](#工具函数api)
-4. [事件系统](#事件系统)
-5. [错误处理](#错误处理)
-6. [扩展开发](#扩展开发)
+1. [核心架构概览](#核心架构概览)
+2. [LocalDataManager 类](#localdatamanager-类)
+3. [CourseRegistrationManager 类](#courseregistrationmanager-类)
+4. [UIController 类](#uicontroller-类)
+5. [配置系统](#配置系统)
+6. [事件系统](#事件系统)
+7. [使用示例](#使用示例)
+8. [扩展开发指南](#扩展开发指南)
 
 ---
 
-## 🏗️ 核心类API
+## 🏗️ 核心架构概览
 
-### CourseRegistrationManager
+### V1.0.4 架构变化
 
-课程注册管理器，负责核心抢课逻辑。
-
-#### 构造函数
-
-```javascript
-const manager = new CourseRegistrationManager();
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    V1.0.4 架构图                              │
+├─────────────────────────────────────────────────────────────┤
+│  UIController (UI控制层)                                    │
+│  ├── 三态UI系统 (悬浮按钮/完整面板/迷你状态)                  │
+│  ├── 事件监听和处理                                           │
+│  └── 数据恢复和同步                                           │
+├─────────────────────────────────────────────────────────────┤
+│  CourseRegistrationManager (业务逻辑层)                      │
+│  ├── 课程管理 (增删改查)                                       │
+│  ├── 选课自动化                                               │
+│  ├── 状态跟踪                                                 │
+│  └── 事件发布                                                 │
+├─────────────────────────────────────────────────────────────┤
+│  LocalDataManager (数据持久化层) - V1.0.4 新增                │
+│  ├── 本地存储管理                                             │
+│  ├── 数据序列化/反序列化                                       │
+│  └── 存储兼容性处理                                           │
+├─────────────────────────────────────────────────────────────┤
+│  CONFIG (配置层)                                            │
+│  ├── API配置                                                 │
+│  ├── UI配置                                                  │
+│  ├── 存储配置                                                 │
+│  └── Z-Index层级管理                                          │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-#### 方法列表
-
-##### `addCourse(jxbid)`
-
-添加课程到抢课列表。
-
-**参数:**
-- `jxbid` (string): 课程ID
-
-**示例:**
-```javascript
-manager.addCourse('2024010101');
-```
-
-##### `removeCourse(jxbid)`
-
-从抢课列表中移除课程。
-
-**参数:**
-- `jxbid` (string): 要移除的课程ID
-
-**示例:**
-```javascript
-manager.removeCourse('2024010101');
-```
-
-##### `initialize()`
-
-初始化系统，加载实验班信息并开始抢课。
-
-**返回值:** `Promise<void>`
-
-**示例:**
-```javascript
-await manager.initialize();
-```
-
-##### `startLoop()`
-
-启动抢课定时器。
-
-**示例:**
-```javascript
-manager.startLoop();
-```
-
-##### `stopLoop()`
-
-停止抢课定时器。
-
-**示例:**
-```javascript
-manager.stopLoop();
-```
-
-##### `getStatus()`
-
-获取抢课状态信息。
-
-**返回值:** `Object`
+### 模块依赖关系
 
 ```javascript
-const status = manager.getStatus();
-console.log(status);
-// 输出:
-// {
-//   totalCourses: 3,
-//   successCount: 1,
-//   isRunning: true,
-//   courses: [
-//     {
-//       id: '2024010101',
-//       success: true,
-//       glReady: true,
-//       experimentalClassCount: 2
-//     }
-//   ]
-// }
+// 依赖关系图
+LocalDataManager (新增)
+    ↑
+CourseRegistrationManager
+    ↑
+UIController
+    ↑
+初始化调用
 ```
 
-##### `reset()`
+---
 
+## 💾 LocalDataManager 类 (V1.0.4 新增)
+
+负责本地数据的持久化存储和管理，支持 GM_setValue/GM_getValue API。
+
+### 构造函数
+
+```javascript
+new LocalDataManager()
+```
+
+### 属性
+
+```javascript
+// 存储键名配置
+this.STORAGE_KEYS = {
+    COURSES: 'scmu_courses',
+    EXPERIMENTAL_CLASSES: 'scmu_experimental_classes',
+    METADATA: 'scmu_metadata'
+};
+
+// 数据版本
+this.DATA_VERSION = '1.0.0';
+
+// 存储可用性检查
+this.storageAvailable = boolean;
+
+// 默认课程名称
+this.DEFAULT_COURSE_NAME = '请输入名称(可选)';
+```
+
+### 方法
+
+#### checkStorageAvailability()
+检查本地存储功能是否可用。
+
+```javascript
+checkStorageAvailability(): boolean
+```
+
+**返回值**:
+- `true`: 存储功能可用
+- `false`: 存储功能不可用
+
+#### saveCoursesData(courses, experimentalClasses, statusMap)
+保存课程数据到本地存储。
+
+```javascript
+saveCoursesData(
+    courses: string[],           // 课程ID数组
+    experimentalClasses: Object,   // 实验班数据映射
+    statusMap: Object            // 课程状态映射
+): boolean
+```
+
+**参数**:
+- `courses`: 课程ID数组
+- `experimentalClasses`: 实验班数据映射 `{courseId: [expClassIds]}`
+- `statusMap`: 课程状态映射 `{courseId: {success: boolean, ...}}`
+
+**返回值**:
+- `true`: 保存成功
+- `false`: 保存失败
+
+#### loadCoursesData()
+从本地存储加载课程数据。
+
+```javascript
+loadCoursesData(): Object | null
+```
+
+**返回值**:
+```javascript
+{
+    courses: string[],              // 课程ID数组
+    courseDetails: Object[],        // 课程详细信息
+    experimentalClasses: Object,     // 实验班数据
+    metadata: Object               // 元数据
+} | null
+```
+
+#### updateCourseName(courseId, courseName)
+更新课程名称。
+
+```javascript
+updateCourseName(
+    courseId: string,    // 课程ID
+    courseName: string   // 新的课程名称
+): boolean
+```
+
+#### removeCourse(courseId)
+从本地存储中删除指定课程。
+
+```javascript
+removeCourse(courseId: string): boolean
+```
+
+#### clearAllData()
+清空所有本地存储数据。
+
+```javascript
+clearAllData(): boolean
+```
+
+#### getStorageInfo()
+获取存储状态信息。
+
+```javascript
+getStorageInfo(): Object
+```
+
+#### getSavedCoursesSummary()
+获取已保存课程的详细摘要。
+
+```javascript
+getSavedCoursesSummary(): Object
+```
+
+---
+
+## 🎯 CourseRegistrationManager 类
+
+负责课程注册的核心业务逻辑和自动化选课功能。
+
+### V1.0.4 更新内容
+
+- 集成 LocalDataManager
+- 新增事件系统
+- 增强状态管理
+- 改进错误处理
+
+### 构造函数
+
+```javascript
+new CourseRegistrationManager()
+```
+
+### 属性
+
+```javascript
+this.courses = [];                    // 课程ID数组
+this.statusMap = {};                  // 课程状态映射
+this.glJxbidMap = {};                 // 实验班信息映射
+this.intervalId = null;               // 选课定时器ID
+this.localDataManager = LocalDataManager;  // 本地数据管理器实例
+```
+
+### 核心方法 (V1.0.4 更新)
+
+#### initEventListeners()
+初始化事件监听器。
+
+```javascript
+initEventListeners(): void
+```
+
+#### loadSavedData()
+加载保存的课程数据。
+
+```javascript
+loadSavedData(): void
+```
+
+#### saveCurrentData()
+保存当前数据到本地存储。
+
+```javascript
+saveCurrentData(): boolean
+```
+
+#### addCourse(jxbid)
+添加课程到选课列表。
+
+```javascript
+addCourse(jxbid: string): boolean
+```
+
+#### removeCourse(jxbid)
+移除课程。
+
+```javascript
+removeCourse(jxbid: string): boolean
+```
+
+#### updateCourse(oldCourseId, newCourseId)
+更新/替换课程ID。
+
+```javascript
+updateCourse(
+    oldCourseId: string,
+    newCourseId: string
+): boolean
+```
+
+#### addCourseRuntime(jxbid)
+运行时动态添加课程。
+
+```javascript
+addCourseRuntime(jxbid: string): Promise<boolean>
+```
+
+#### getStatus()
+获取选课状态信息。
+
+```javascript
+getStatus(): Object
+```
+
+**返回值**:
+```javascript
+{
+    totalCourses: number,
+    successCount: number,
+    isRunning: boolean,
+    courses: Array<{
+        id: string,
+        success: boolean,
+        glReady: boolean,
+        experimentalClassCount: number
+    }>
+}
+```
+
+#### getStatusForCourse(jxbid)
+获取指定课程的状态描述。
+
+```javascript
+getStatusForCourse(jxbid: string): string
+```
+
+#### reset()
 重置所有状态。
 
-**示例:**
 ```javascript
-manager.reset();
+reset(): void
 ```
 
-##### `fetchExperimentalClasses(jxbid)`
-
-获取课程的实验班信息。
-
-**参数:**
-- `jxbid` (string): 课程ID
-
-**返回值:** `Promise<string[]>` - 实验班ID列表
-
-**示例:**
-```javascript
-const classes = await manager.fetchExperimentalClasses('2024010101');
-console.log(`实验班数量: ${classes.length}`);
-```
-
-##### `trySelectCourse(jxbid)`
-
-尝试选择指定课程。
-
-**参数:**
-- `jxbid` (string): 课程ID
-
-**返回值:** `Promise<void>`
-
-**示例:**
-```javascript
-await manager.trySelectCourse('2024010101');
-```
-
-### UIController
-
-用户界面控制器，管理图形界面。
-
-#### 构造函数
-
-```javascript
-const ui = new UIController();
-```
-
-#### 方法列表
-
-##### `initialize()`
-
-初始化用户界面。
-
-**示例:**
-```javascript
-ui.initialize();
-```
-
-##### `destroy()`
-
-销毁用户界面。
-
-**示例:**
-```javascript
-ui.destroy();
-```
-
-##### `showNotification(message, type)`
-
+#### showNotification(message, type)
 显示通知消息。
 
-**参数:**
-- `message` (string): 消息内容
-- `type` (string): 消息类型 ('success', 'error', 'info', 'warning')
-
-**示例:**
 ```javascript
-ui.showNotification('抢课成功！', 'success');
-ui.showNotification('网络错误，请重试', 'error');
+showNotification(
+    message: string,
+    type: 'success' | 'error' | 'warning' | 'info' = 'info'
+): void
 ```
 
-##### `updateButtonStates(isRunning)`
+### 选课核心方法
 
-更新按钮状态。
+#### initialize()
+初始化系统，加载实验班信息并开始选课。
 
-**参数:**
-- `isRunning` (boolean): 是否正在运行
-
-**示例:**
 ```javascript
-ui.updateButtonStates(true);  // 设置为运行状态
-ui.updateButtonStates(false); // 设置为停止状态
+initialize(): Promise<void>
 ```
 
-##### `makeDraggable(element)`
+#### startLoop()
+启动选课定时器。
 
-使元素可拖拽。
-
-**参数:**
-- `element` (HTMLElement): 要拖拽的DOM元素
-
-**示例:**
 ```javascript
-const panel = document.getElementById('control-panel');
-ui.makeDraggable(panel);
+startLoop(): void
+```
+
+#### stopLoop()
+停止选课。
+
+```javascript
+stopLoop(): void
+```
+
+#### trySelectCourse(jxbid)
+尝试选择课程。
+
+```javascript
+trySelectCourse(jxbid: string): Promise<void>
+```
+
+#### fetchExperimentalClasses(jxbid)
+获取课程的实验班信息。
+
+```javascript
+fetchExperimentalClasses(jxbid: string): Promise<string[]>
 ```
 
 ---
 
-## ⚙️ 配置API
+## 🎨 UIController 类
 
-### CONFIG 对象
+负责用户界面的管理和控制，V1.0.4 版本进行了重大重构。
 
-全局配置对象，包含所有可配置参数。
+### V1.0.4 重大更新
 
-#### 结构
+- 三态UI系统
+- 数据持久化集成
+- 事件驱动架构
+- 竞态条件修复
+
+### 构造函数
+
+```javascript
+new UIController(courseManager: CourseRegistrationManager)
+```
+
+### UI状态常量
+
+```javascript
+const UI_STATES = {
+    FLOATING_BUTTON: 'floating_button',    // 悬浮按钮状态
+    FULL_PANEL: 'full_panel',              // 完整面板状态
+    MINIMIZED_STATUS: 'minimized_status'   // 迷你状态面板
+};
+```
+
+### 核心方法 (V1.0.4 更新)
+
+#### initStorageEventListeners()
+初始化存储事件监听器。
+
+```javascript
+initStorageEventListeners(): void
+```
+
+#### restoreUIFromStorage(courses, courseDetails, statusMap, retryCount)
+从存储数据恢复UI界面。
+
+```javascript
+restoreUIFromStorage(
+    courses: string[],
+    courseDetails: Object[],
+    statusMap: Object,
+    retryCount: number = 0
+): void
+```
+
+#### bindCourseInputEvents(courseInput, inputId, inputName)
+为课程输入框绑定事件监听器。
+
+```javascript
+bindCourseInputEvents(
+    courseInput: HTMLElement,
+    inputId: HTMLInputElement,
+    inputName: HTMLInputElement
+): void
+```
+
+#### hideAllStates()
+隐藏所有UI状态。
+
+```javascript
+hideAllStates(): void
+```
+
+#### transitionToState(newState)
+转换到指定UI状态。
+
+```javascript
+transitionToState(newState: string): void
+```
+
+#### cycleUIState()
+循环UI状态。
+
+```javascript
+cycleUIState(): void
+```
+
+#### updateScrollableContainer()
+更新滚动容器配置。
+
+```javascript
+updateScrollableContainer(): void
+```
+
+#### showStatusModal()
+显示状态详情弹窗。
+
+```javascript
+showStatusModal(): void
+```
+
+#### showResetConfirmation()
+显示重置确认对话框。
+
+```javascript
+showResetConfirmation(): void
+```
+
+#### showCloseConfirmation()
+显示关闭确认对话框。
+
+```javascript
+showCloseConfirmation(): void
+```
+
+#### executeClose()
+执行关闭程序操作。
+
+```javascript
+executeClose(): void
+```
+
+#### handleDeleteCourse(div, inputId)
+处理删除课程操作。
+
+```javascript
+handleDeleteCourse(
+    div: HTMLElement,
+    inputId: HTMLInputElement
+): void
+```
+
+#### makeDraggable(element)
+使元素可拖拽。
+
+```javascript
+makeDraggable(element: HTMLElement): void
+```
+
+#### isValidCourseId(courseId)
+验证课程ID格式。
+
+```javascript
+isValidCourseId(courseId: string): boolean
+```
+
+---
+
+## ⚙️ 配置系统
+
+V1.0.4 版本大幅扩展了配置系统。
+
+### 完整配置结构
 
 ```javascript
 const CONFIG = {
+    // API配置
     API: {
         BASE_URL: 'https://xk.webvpn.scuec.edu.cn/xsxk',
         ENDPOINTS: {
@@ -232,17 +506,30 @@ const CONFIG = {
             COURSE_REGISTRATION: '/xkOper.xk?method=handleKzyxk&jxbid='
         }
     },
+
+    // 选课配置
     GRAB: {
-        POLLING_INTERVAL: 500,
-        REQUEST_TIMEOUT: 10000,
-        MAX_RETRY_COUNT: 3,
-        COURSE_FULL_KEYWORDS: ['课程已满', '已选满']
+        POLLING_INTERVAL: 500,                    // 轮询间隔（毫秒）
+        REQUEST_TIMEOUT: 10000,                   // 请求超时时间
+        MAX_RETRY_COUNT: 3,                       // 最大重试次数
+        COURSE_FULL_KEYWORDS: ['课程已满', '已选满'] // 课程满员检测关键词
     },
+
+    // UI配置
     UI: {
         PANEL_STYLE: { /* 面板样式 */ },
+        FLOATING_BUTTON: { /* 悬浮按钮样式 */ },
+        MINIMIZED_PANEL: { /* 迷你面板样式 */ },
+        SCROLLABLE_CONTAINER: {                    // V1.0.4 新增
+            MAX_COURSES_BEFORE_SCROLL: 4,         // 超过多少课程启用滚动
+            CONTAINER_HEIGHT: '250px',            // 滚动容器高度
+            SCROLLBAR_WIDTH: '8px'               // 滚动条宽度
+        },
         BUTTON_STYLE: { /* 按钮样式 */ },
         INPUT_STYLE: { /* 输入框样式 */ }
     },
+
+    // HTTP配置
     HTTP: {
         HEADERS: {
             'accept': '*/*',
@@ -250,9 +537,11 @@ const CONFIG = {
         },
         CREDENTIALS: 'include'
     },
+
+    // 日志配置
     LOG: {
         ENABLE_VERBOSE_LOGGING: true,
-        LOG_PREFIX: '[抢课助手]',
+        LOG_PREFIX: '[选课助手]',
         LOG_LEVELS: {
             INFO: 'info',
             WARN: 'warn',
@@ -260,6 +549,18 @@ const CONFIG = {
             SUCCESS: 'success'
         }
     },
+
+    // Z-Index层级管理 - V1.0.4 新增
+    Z_INDEX: {
+        BASE_LAYER: 9999,        // 基础UI组件
+        NOTIFICATION: 10000,     // 通知消息
+        MODAL: 10001,           // 普通弹窗
+        DIALOG: 10002,          // 确认对话框
+        OVERLAY: 10003,         // 全屏遮罩
+        TOPMOST: 10004          // 最高层级
+    },
+
+    // 开发者配置
     DEV: {
         DEBUG_MODE: false,
         SHOW_DEBUG_INFO: false
@@ -267,368 +568,573 @@ const CONFIG = {
 };
 ```
 
-#### 修改配置
+### 自定义配置
 
 ```javascript
 // 修改轮询间隔
 CONFIG.GRAB.POLLING_INTERVAL = 1000;  // 改为1秒
 
-// 添加新的满员检测关键词
-CONFIG.GRAB.COURSE_FULL_KEYWORDS.push('名额已满');
+// 修改UI样式
+CONFIG.UI.PANEL_STYLE.top = '50px';  // 调整面板位置
 
-// 修改API基础URL
-CONFIG.API.BASE_URL = 'https://new-xk.scuec.edu.cn';
-```
-
----
-
-## 🛠️ 工具函数API
-
-### 检查函数
-
-##### `checkCourseFull(html)`
-
-检查课程是否已满。
-
-**参数:**
-- `html` (string): HTML内容
-
-**返回值:** `boolean`
-
-**示例:**
-```javascript
-if (checkCourseFull(responseText)) {
-    console.log('课程已满，继续等待');
-}
-```
-
-##### `initCourseState(jxbid)`
-
-初始化课程状态。
-
-**参数:**
-- `jxbid` (string): 课程ID
-
-**示例:**
-```javascript
-initCourseState('2024010101');
-```
-
-### HTTP工具
-
-##### `createRequestConfig(options)`
-
-创建HTTP请求配置。
-
-**参数:**
-- `options` (Object): 请求选项
-
-**返回值:** `Object` - 请求配置对象
-
-**示例:**
-```javascript
-const config = createRequestConfig({
-    method: 'GET',
-    timeout: 5000
-});
+// 修改日志级别
+CONFIG.LOG.ENABLE_VERBOSE_LOGGING = false;  // 关闭详细日志
 ```
 
 ---
 
 ## 📡 事件系统
 
-### 自定义事件
+V1.0.4 引入了完整的事件驱动架构。
 
-抢课助手支持以下自定义事件：
+### 事件类型
 
-#### `course:added`
-
-课程添加时触发。
+#### storage:dataLoaded
+数据加载完成事件。
 
 ```javascript
-document.addEventListener('course:added', (event) => {
-    const { courseId } = event.detail;
-    console.log(`课程 ${courseId} 已添加`);
+document.addEventListener('storage:dataLoaded', (event) => {
+    const { courses, courseDetails, statusMap } = event.detail;
+    console.log('数据已加载:', courses);
 });
 ```
 
-#### `course:success`
-
-抢课成功时触发。
+#### course:success
+选课成功事件。
 
 ```javascript
 document.addEventListener('course:success', (event) => {
     const { courseId, timestamp } = event.detail;
-    console.log(`课程 ${courseId} 抢课成功于 ${timestamp}`);
+    console.log('选课成功:', courseId);
 });
 ```
 
-#### `course:failed`
-
-抢课失败时触发。
+#### courses:started
+选课开始事件。
 
 ```javascript
-document.addEventListener('course:failed', (event) => {
-    const { courseId, error } = event.detail;
-    console.log(`课程 ${courseId} 抢课失败: ${error}`);
+document.addEventListener('courses:started', () => {
+    console.log('选课已开始');
 });
 ```
 
-#### `grab:started`
-
-抢课开始时触发。
+#### courses:stopped
+选课停止事件。
 
 ```javascript
-document.addEventListener('grab:started', () => {
-    console.log('抢课已开始');
+document.addEventListener('courses:stopped', () => {
+    console.log('选课已停止');
 });
 ```
 
-#### `grab:stopped`
-
-抢课停止时触发。
+#### selection:auto-stopped
+自动停止事件。
 
 ```javascript
-document.addEventListener('grab:stopped', () => {
-    console.log('抢课已停止');
+document.addEventListener('selection:auto-stopped', (event) => {
+    const { reason, timestamp } = event.detail;
+    console.log('自动停止原因:', reason);
 });
 ```
 
-### 触发事件
+### 自定义事件发布
 
 ```javascript
-// 触发自定义事件
-const event = new CustomEvent('course:success', {
-    detail: { courseId: '2024010101', timestamp: Date.now() }
+// 发布自定义事件
+const event = new CustomEvent('custom:event', {
+    detail: { message: 'Hello World' }
 });
 document.dispatchEvent(event);
 ```
 
 ---
 
-## ❌ 错误处理
+## 💡 使用示例
 
-### 错误类型
-
-#### `NetworkError`
-
-网络请求错误。
+### 基础使用示例
 
 ```javascript
-try {
-    await manager.trySelectCourse('2024010101');
-} catch (error) {
-    if (error instanceof NetworkError) {
-        console.error('网络错误:', error.message);
-    }
-}
+// 1. 创建课程管理器实例
+const courseManager = new CourseRegistrationManager();
+
+// 2. 添加课程
+courseManager.addCourse('12345678');
+courseManager.addCourse('87654321');
+
+// 3. 设置课程名称（V1.0.4 新增）
+courseManager.localDataManager.updateCourseName('12345678', '高等数学');
+
+// 4. 开始选课
+await courseManager.initialize();
+
+// 5. 查看状态
+console.log(courseManager.getStatus());
+
+// 6. 停止选课
+courseManager.stopLoop();
 ```
 
-#### `CourseFullError`
-
-课程已满错误。
+### UI控制器使用示例
 
 ```javascript
-try {
-    await manager.trySelectCourse('2024010101');
-} catch (error) {
-    if (error instanceof CourseFullError) {
-        console.log('课程已满，继续尝试');
-    }
-}
+// 1. 创建UI控制器
+const uiController = new UIController(courseManager);
+
+// 2. 初始化界面
+uiController.initialize();
+
+// 3. 切换UI状态
+uiController.transitionToState('full_panel');
+
+// 4. 显示通知
+uiController.showNotification('操作成功', 'success');
+
+// 5. 显示状态弹窗
+uiController.showStatusModal();
 ```
 
-#### `AuthenticationError`
-
-认证错误。
+### 本地数据管理示例
 
 ```javascript
-try {
-    await manager.initialize();
-} catch (error) {
-    if (error instanceof AuthenticationError) {
-        console.error('登录已过期，请重新登录');
-    }
-}
+// 1. 创建数据管理器
+const dataManager = new LocalDataManager();
+
+// 2. 保存数据
+dataManager.saveCoursesData(
+    ['12345678', '87654321'],
+    { '12345678': ['exp1', 'exp2'] },
+    { '12345678': { success: true } }
+);
+
+// 3. 加载数据
+const savedData = dataManager.loadCoursesData();
+
+// 4. 更新课程名称
+dataManager.updateCourseName('12345678', '数据结构');
+
+// 5. 获取存储信息
+const storageInfo = dataManager.getStorageInfo();
 ```
 
-### 错误处理最佳实践
+### 事件监听示例
 
 ```javascript
-// 全局错误处理
-window.addEventListener('unhandledrejection', (event) => {
-    console.error('未处理的Promise拒绝:', event.reason);
-    // 可以在这里添加错误上报逻辑
+// 1. 监听选课成功事件
+document.addEventListener('course:success', (event) => {
+    const { courseId } = event.detail;
+
+    // 显示成功通知
+    uiController.showNotification(`抢到课程: ${courseId}`, 'success');
+
+    // 播放成功音效（如果需要）
+    playSuccessSound();
 });
 
-// 抢课过程中的错误处理
-async function safeGrabCourse(courseId) {
-    try {
-        await manager.trySelectCourse(courseId);
-    } catch (error) {
-        console.error(`抢课失败 [${courseId}]:`, error);
+// 2. 监听数据加载事件
+document.addEventListener('storage:dataLoaded', (event) => {
+    const { courses } = event.detail;
 
-        // 根据错误类型采取不同措施
-        if (error instanceof NetworkError) {
-            // 网络错误，稍后重试
-            setTimeout(() => safeGrabCourse(courseId), 2000);
-        } else if (error instanceof AuthenticationError) {
-            // 认证错误，提醒用户重新登录
-            ui.showNotification('登录已过期，请重新登录', 'error');
+    // 恢复UI状态
+    uiController.restoreUIFromStorage(
+        event.detail.courses,
+        event.detail.courseDetails,
+        event.detail.statusMap
+    );
+
+    console.log(`已恢复 ${courses.length} 门课程`);
+});
+
+// 3. 监听选课停止事件
+document.addEventListener('courses:stopped', () => {
+    // 切换UI到悬浮按钮状态
+    uiController.transitionToState('floating_button');
+
+    // 显示停止通知
+    uiController.showNotification('选课已停止', 'info');
+});
+```
+
+### 高级自定义示例
+
+```javascript
+// 1. 自定义配置
+const customConfig = {
+    ...CONFIG,
+    GRAB: {
+        ...CONFIG.GRAB,
+        POLLING_INTERVAL: 300,  // 更快的轮询间隔
+        COURSE_FULL_KEYWORDS: ['课程已满', '已选满', '名额已满']
+    },
+    UI: {
+        ...CONFIG.UI,
+        PANEL_STYLE: {
+            ...CONFIG.UI.PANEL_STYLE,
+            backgroundColor: '#2c3e50',  // 深色主题
+            color: 'white'
+        }
+    }
+};
+
+// 2. 创建增强版课程管理器
+class EnhancedCourseManager extends CourseRegistrationManager {
+    constructor() {
+        super();
+        this.enhancedFeatures = true;
+    }
+
+    // 重写选课成功处理
+    async trySelectCourse(jxbid) {
+        // 添加预处理逻辑
+        if (this.enhancedFeatures) {
+            console.log(`[增强功能] 开始处理课程: ${jxbid}`);
+        }
+
+        // 调用父类方法
+        return super.trySelectCourse(jxbid);
+    }
+
+    // 添加批量操作功能
+    addMultipleCourses(courseIds) {
+        courseIds.forEach(id => this.addCourse(id));
+        return this.courses.length;
+    }
+}
+
+// 3. 使用增强版管理器
+const enhancedManager = new EnhancedCourseManager();
+
+// 4. 批量添加课程
+enhancedManager.addMultipleCourses(['12345678', '87654321', '11111111']);
+```
+
+---
+
+## 🔧 扩展开发指南
+
+### 添加新功能模块
+
+```javascript
+// 1. 创建新功能模块
+class NotificationManager {
+    constructor() {
+        this.notifications = [];
+    }
+
+    sendDesktopNotification(title, message) {
+        if ('Notification' in window) {
+            new Notification(title, { body: message });
+        }
+    }
+
+    sendEmailNotification(courseId, status) {
+        // 邮件通知实现
+        console.log(`邮件通知: 课程 ${courseId} 状态: ${status}`);
+    }
+}
+
+// 2. 集成到主系统
+const notificationManager = new NotificationManager();
+
+// 3. 在选课成功时调用
+document.addEventListener('course:success', (event) => {
+    const { courseId } = event.detail;
+
+    // 发送桌面通知
+    notificationManager.sendDesktopNotification(
+        '选课成功',
+        `成功抢到课程: ${courseId}`
+    );
+
+    // 发送邮件通知
+    notificationManager.sendEmailNotification(courseId, 'success');
+});
+```
+
+### 创建自定义UI组件
+
+```javascript
+// 1. 创建自定义组件
+class StatisticsPanel {
+    constructor(courseManager) {
+        this.courseManager = courseManager;
+        this.panel = null;
+        this.updateInterval = null;
+    }
+
+    create() {
+        this.panel = document.createElement('div');
+        this.panel.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border: 1px solid #ccc;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 10001;
+        `;
+
+        this.update();
+        document.body.appendChild(this.panel);
+
+        this.startAutoUpdate();
+    }
+
+    update() {
+        const status = this.courseManager.getStatus();
+
+        this.panel.innerHTML = `
+            <h4>📊 实时统计</h4>
+            <div>总课程: ${status.totalCourses}</div>
+            <div>已成功: ${status.successCount}</div>
+            <div>成功率: ${status.totalCourses > 0 ?
+                Math.round(status.successCount / status.totalCourses * 100) : 0}%</div>
+            <div>运行中: ${status.isRunning ? '是' : '否'}</div>
+        `;
+    }
+
+    startAutoUpdate() {
+        this.updateInterval = setInterval(() => {
+            this.update();
+        }, 1000);
+    }
+
+    destroy() {
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+        }
+        if (this.panel && this.panel.parentNode) {
+            this.panel.parentNode.removeChild(this.panel);
         }
     }
 }
+
+// 2. 集成到UI控制器
+class EnhancedUIController extends UIController {
+    constructor(courseManager) {
+        super(courseManager);
+        this.statisticsPanel = new StatisticsPanel(courseManager);
+    }
+
+    initialize() {
+        super.initialize();
+
+        // 添加统计面板
+        document.addEventListener('courses:started', () => {
+            this.statisticsPanel.create();
+        });
+
+        document.addEventListener('courses:stopped', () => {
+            this.statisticsPanel.destroy();
+        });
+    }
+}
+
+// 3. 使用增强版UI控制器
+const enhancedUIController = new EnhancedUIController(courseManager);
+enhancedUIController.initialize();
 ```
 
----
-
-## 🔧 扩展开发
-
-### 创建自定义插件
+### 插件系统示例
 
 ```javascript
-class CustomPlugin {
-    constructor(manager, ui) {
-        this.manager = manager;
-        this.ui = ui;
-        this.init();
+// 1. 定义插件接口
+class Plugin {
+    constructor(name, version) {
+        this.name = name;
+        this.version = version;
+        this.enabled = false;
     }
 
-    init() {
-        // 插件初始化逻辑
-        this.addCustomButton();
-        this.setupEventListeners();
+    initialize(courseManager, uiController) {
+        throw new Error('initialize method must be implemented');
     }
 
-    addCustomButton() {
-        const button = document.createElement('button');
-        button.textContent = '自定义功能';
-        button.onclick = () => this.customFunction();
+    destroy() {
+        throw new Error('destroy method must be implemented');
+    }
+}
 
-        // 添加到控制面板
-        const panel = document.getElementById('course-registration-panel');
-        panel.appendChild(button);
+// 2. 创建具体插件
+class LoggingPlugin extends Plugin {
+    constructor() {
+        super('Logging Plugin', '1.0.0');
+        this.logFile = [];
     }
 
-    customFunction() {
-        // 自定义功能实现
-        console.log('执行自定义功能');
-    }
+    initialize(courseManager, uiController) {
+        this.enabled = true;
 
-    setupEventListeners() {
-        // 监听抢课事件
+        // 监听所有事件
         document.addEventListener('course:success', (event) => {
-            this.onCourseSuccess(event.detail);
+            this.log(`选课成功: ${event.detail.courseId}`);
+        });
+
+        document.addEventListener('courses:started', () => {
+            this.log('选课开始');
+        });
+
+        document.addEventListener('courses:stopped', () => {
+            this.log('选课停止');
         });
     }
 
-    onCourseSuccess(courseInfo) {
-        // 抢课成功后的自定义处理
-        this.ui.showNotification(`恭喜抢到课程: ${courseInfo.courseId}`, 'success');
-
-        // 可以添加自定义逻辑，如发送通知、保存数据等
-        this.saveSuccessRecord(courseInfo);
+    log(message) {
+        const timestamp = new Date().toLocaleString();
+        this.logFile.push(`${timestamp}: ${message}`);
+        console.log(`[Plugin] ${message}`);
     }
 
-    saveSuccessRecord(courseInfo) {
-        // 保存抢课成功记录
-        const records = JSON.parse(localStorage.getItem('grabRecords') || '[]');
-        records.push({
-            ...courseInfo,
-            timestamp: Date.now()
+    getLog() {
+        return this.logFile.join('\n');
+    }
+
+    destroy() {
+        this.enabled = false;
+        // 清理事件监听器等
+    }
+}
+
+// 3. 插件管理器
+class PluginManager {
+    constructor() {
+        this.plugins = new Map();
+    }
+
+    registerPlugin(plugin) {
+        this.plugins.set(plugin.name, plugin);
+    }
+
+    initializePlugin(name, courseManager, uiController) {
+        const plugin = this.plugins.get(name);
+        if (plugin) {
+            plugin.initialize(courseManager, uiController);
+        }
+    }
+
+    destroyPlugin(name) {
+        const plugin = this.plugins.get(name);
+        if (plugin) {
+            plugin.destroy();
+        }
+    }
+
+    listPlugins() {
+        return Array.from(this.plugins.keys());
+    }
+}
+
+// 4. 使用插件系统
+const pluginManager = new PluginManager();
+
+// 注册插件
+const loggingPlugin = new LoggingPlugin();
+pluginManager.registerPlugin(loggingPlugin);
+
+// 初始化插件
+pluginManager.initializePlugin('Logging Plugin', courseManager, uiController);
+```
+
+---
+
+## 📚 开发最佳实践
+
+### 1. 错误处理
+
+```javascript
+// 统一错误处理
+class ErrorHandler {
+    static handle(error, context) {
+        console.error(`[${context}] 错误:`, error);
+
+        // 发送错误报告（可选）
+        if (CONFIG.DEV.DEBUG_MODE) {
+            this.reportError(error, context);
+        }
+    }
+
+    static reportError(error, context) {
+        // 错误上报逻辑
+        console.log('错误已上报:', { error, context });
+    }
+}
+
+// 使用示例
+try {
+    await courseManager.initialize();
+} catch (error) {
+    ErrorHandler.handle(error, '选课初始化');
+}
+```
+
+### 2. 性能优化
+
+```javascript
+// 防抖函数
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// 使用防抖优化UI更新
+const debouncedUpdateUI = debounce(() => {
+    uiController.updateStatus();
+}, 100);
+```
+
+### 3. 内存管理
+
+```javascript
+// 组件销毁时清理资源
+class ComponentBase {
+    constructor() {
+        this.timers = [];
+        this.eventListeners = [];
+    }
+
+    addTimer(callback, interval) {
+        const timerId = setInterval(callback, interval);
+        this.timers.push(timerId);
+        return timerId;
+    }
+
+    addEventListener(element, event, handler) {
+        element.addEventListener(event, handler);
+        this.eventListeners.push({ element, event, handler });
+    }
+
+    destroy() {
+        // 清理定时器
+        this.timers.forEach(timerId => clearInterval(timerId));
+        this.timers = [];
+
+        // 清理事件监听器
+        this.eventListeners.forEach(({ element, event, handler }) => {
+            element.removeEventListener(event, handler);
         });
-        localStorage.setItem('grabRecords', JSON.stringify(records));
+        this.eventListeners = [];
     }
-}
-
-// 使用插件
-const plugin = new CustomPlugin(courseManager, uiController);
-```
-
-### 修改默认行为
-
-```javascript
-// 重写抢课逻辑
-class CustomCourseManager extends CourseRegistrationManager {
-    async trySelectCourse(jxbid) {
-        // 添加自定义逻辑
-        console.log(`开始抢课: ${jxbid}`);
-
-        // 调用父类方法
-        await super.trySelectCourse(jxbid);
-
-        // 抢课后的自定义处理
-        this.logGrabAttempt(jxbid);
-    }
-
-    logGrabAttempt(courseId) {
-        const attempts = parseInt(localStorage.getItem(`attempts_${courseId}`) || '0');
-        localStorage.setItem(`attempts_${courseId}`, attempts + 1);
-    }
-}
-
-// 使用自定义管理器
-const customManager = new CustomCourseManager();
-```
-
-### 添加新的配置选项
-
-```javascript
-// 扩展配置
-CONFIG.CUSTOM = {
-    ENABLE_NOTIFICATION: true,
-    AUTO_RETRY_DELAY: 1000,
-    MAX_ATTEMPTS_PER_COURSE: 100,
-    SUCCESS_SOUND: 'notification.mp3'
-};
-
-// 使用新配置
-if (CONFIG.CUSTOM.ENABLE_NOTIFICATION) {
-    // 启用通知功能
 }
 ```
 
 ---
 
-## 📝 开发最佳实践
+## 🔗 相关资源
 
-1. **错误处理**: 始终使用try-catch处理异步操作
-2. **日志记录**: 使用统一的日志格式和前缀
-3. **事件驱动**: 使用事件系统进行模块间通信
-4. **配置管理**: 通过CONFIG对象管理所有配置
-5. **模块化**: 保持代码的模块化和可维护性
-6. **性能优化**: 避免不必要的网络请求和DOM操作
+- [项目主页](https://github.com/sushuheng/scmu_cc_helper)
+- [安装指南](installation-guide-v1.0.4.md)
+- [JavaScript特性文档](javascript-features.md)
+- [故障排除指南](troubleshooting.md)
 
 ---
 
-## 🔍 调试技巧
-
-### 启用调试模式
-
-```javascript
-CONFIG.DEV.DEBUG_MODE = true;
-CONFIG.LOG.ENABLE_VERBOSE_LOGGING = true;
-```
-
-### 查看详细日志
-
-```javascript
-// 在控制台中查看所有状态
-console.log('抢课状态:', courseManager.getStatus());
-console.log('配置信息:', CONFIG);
-```
-
-### 网络请求监控
-
-```javascript
-// 拦截fetch请求进行监控
-const originalFetch = window.fetch;
-window.fetch = function(...args) {
-    console.log('网络请求:', args[0]);
-    return originalFetch.apply(this, args);
-};
-```
-
----
-
-*API文档持续更新中...如有疑问请提交Issue*
+*最后更新时间: 2025年12月3日 (V1.0.4)*
+*如有问题或建议，欢迎提交Issue或Pull Request*

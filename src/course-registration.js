@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.3
+ * @version 1.0.4
  * @description 专为中南民族大学学生设计的自动化课程注册助手核心逻辑模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -25,6 +25,7 @@
  */
 
 import { CONFIG } from './config.js';
+import { LocalDataManager } from './local-data-manager.js';
 
 /**
  * 课程注册管理类
@@ -39,6 +40,108 @@ class CourseRegistrationManager {
         this.glJxbidMap = {};
         // 控制选课的定时器
         this.intervalId = null;
+
+        // 本地数据管理器
+        this.localDataManager = new LocalDataManager();
+
+        // 初始化事件监听
+        this.initEventListeners();
+
+        // 加载保存的数据
+        this.loadSavedData();
+    }
+
+    /**
+     * 初始化事件监听器
+     */
+    initEventListeners() {
+        // 监听自定义事件
+        document.addEventListener('course:success', (event) => {
+            const { courseId } = event.detail;
+            console.log(`🎉 选课成功! 课程: ${courseId}`);
+            this.showNotification(`成功抢到课程: ${courseId}`, 'success');
+        });
+    }
+
+    /**
+     * 加载保存的课程数据
+     */
+    loadSavedData() {
+        console.log(`${CONFIG.LOG.LOG_PREFIX} 开始加载本地存储数据...`);
+
+        const savedData = this.localDataManager.loadCoursesData();
+        console.log(`${CONFIG.LOG.LOG_PREFIX} 本地存储数据读取结果:`, {
+            hasData: !!savedData,
+            coursesCount: savedData?.courses?.length || 0,
+            courseDetailsCount: savedData?.courseDetails?.length || 0,
+            experimentalClassesCount: Object.keys(savedData?.experimentalClasses || {}).length,
+            storageAvailable: this.localDataManager.storageAvailable
+        });
+
+        if (savedData && savedData.courses.length > 0) {
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 发现${savedData.courses.length}门保存的课程:`, savedData.courses);
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程详细信息:`, savedData.courseDetails);
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 实验班信息:`, savedData.experimentalClasses);
+
+            // 更新课程列表
+            this.courses = savedData.courses; // ✅ 修复：直接使用已提取的ID数组
+            this.glJxbidMap = savedData.experimentalClasses;
+
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 更新后的课程ID列表:`, this.courses);
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 更新后的实验班映射:`, this.glJxbidMap);
+
+            // 初始化课程状态（使用保存的状态）
+            savedData.courseDetails.forEach(courseDetail => {
+                this.statusMap[courseDetail.id] = {
+                    success: courseDetail.status?.success || false,
+                    glReady: false,
+                    glAttemptIndex: 0
+                };
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${courseDetail.id}状态初始化:`, {
+                    name: courseDetail.name,
+                    success: this.statusMap[courseDetail.id].success
+                });
+            });
+
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 完整的状态映射:`, this.statusMap);
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 数据加载完成，准备触发UI更新事件`);
+
+            // 触发数据加载完成事件，通知UI更新
+            const eventData = {
+                courses: this.courses,
+                courseDetails: savedData.courseDetails,
+                statusMap: this.statusMap
+            };
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 触发storage:dataLoaded事件，数据:`, eventData);
+
+            document.dispatchEvent(new CustomEvent('storage:dataLoaded', {
+                detail: eventData
+            }));
+
+            console.log(`${CONFIG.LOG.LOG_PREFIX} storage:dataLoaded事件已触发`);
+        } else {
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 没有找到保存的数据或数据为空，使用默认状态`);
+            console.log(`${CONFIG.LOG.LOG_PREFIX} savedData详情:`, savedData);
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 当前课程列表:`, this.courses);
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 当前状态映射:`, this.statusMap);
+        }
+    }
+
+    /**
+     * 保存当前数据到本地存储
+     */
+    saveCurrentData() {
+        const success = this.localDataManager.saveCoursesData(
+            this.courses,
+            this.glJxbidMap,
+            this.statusMap
+        );
+
+        if (!success) {
+            console.warn(`${CONFIG.LOG.LOG_PREFIX} 数据保存失败，但不影响功能使用`);
+        }
+
+        return success;
     }
 
     /**
@@ -139,6 +242,15 @@ class CourseRegistrationManager {
             if (data.success) {
                 console.log(`✅ [成功] ${jxbid}${glInfo} 选课成功！时间: ${data.xksj || new Date().toLocaleTimeString()}`);
                 state.success = true;
+
+                // 自动保存选课成功状态
+                this.saveCurrentData();
+
+                // 触发成功事件
+                const event = new CustomEvent('course:success', {
+                    detail: { courseId: jxbid, timestamp: Date.now() }
+                });
+                document.dispatchEvent(event);
             } else {
                 console.log(`⚠️ [${jxbid}] 选课失败${glInfo ? `，继续尝试下一个实验班` : ""}：`, data);
                 if (glList.length > 0) {
@@ -213,6 +325,10 @@ class CourseRegistrationManager {
         this.courses.push(trimmedId);
         this.initCourseState(trimmedId);
         console.log(`${CONFIG.LOG.LOG_PREFIX} 已添加课程: ${trimmedId}`);
+
+        // 自动保存数据
+        this.saveCurrentData();
+
         return true;
     }
 
@@ -228,6 +344,20 @@ class CourseRegistrationManager {
             delete this.statusMap[jxbid];
             delete this.glJxbidMap[jxbid];
             console.log(`${CONFIG.LOG.LOG_PREFIX} 已移除课程: ${jxbid}`);
+
+            // ✅ 修复：直接从本地存储中删除课程记录
+            const storageRemoved = this.localDataManager.removeCourse(jxbid);
+            if (storageRemoved) {
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${jxbid}已从本地存储删除`);
+            } else {
+                console.warn(`${CONFIG.LOG.LOG_PREFIX} 从本地存储删除课程${jxbid}失败`);
+            }
+
+            // 自动保存数据（保存更新后的状态）
+            this.saveCurrentData();
+
+            // 检查课程列表是否为空，如果为空且正在选课则自动停止
+            this.checkEmptyCourseList();
             return true;
         }
         console.warn(`${CONFIG.LOG.LOG_PREFIX} 课程 ${jxbid} 不存在，无法移除`);
@@ -313,6 +443,70 @@ class CourseRegistrationManager {
     }
 
     /**
+     * 获取课程状态
+     * @param {string} jxbid - 课程ID
+     * @returns {string} 课程状态描述
+     */
+    getStatusForCourse(jxbid) {
+        const status = this.statusMap[jxbid];
+        if (!status) return '未知状态';
+
+        if (status.success) return '选课成功';
+        if (!status.glReady) return '加载实验班中...';
+        return '正在尝试选课';
+    }
+
+    /**
+     * 检查课程列表是否为空并自动停止
+     */
+    checkEmptyCourseList() {
+        if (this.courses.length === 0 && this.intervalId) {
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程列表为空，自动停止选课`);
+            this.stopLoop();
+
+            // 触发自动停止事件
+            const event = new CustomEvent('selection:auto-stopped', {
+                detail: { reason: 'empty_course_list', timestamp: Date.now() }
+            });
+            document.dispatchEvent(event);
+        }
+    }
+
+    /**
+     * 运行时动态添加课程
+     * @param {string} jxbid - 课程ID
+     * @returns {Promise<boolean>} 添加是否成功
+     */
+    async addCourseRuntime(jxbid) {
+        // 基础验证
+        if (!jxbid || jxbid.trim() === '') return false;
+
+        const trimmedId = jxbid.trim();
+        if (this.courses.includes(trimmedId)) return false;
+
+        // 添加课程到列表
+        this.courses.push(trimmedId);
+        this.initCourseState(trimmedId);
+
+        // 如果选课正在进行，立即加载实验班信息
+        if (this.intervalId) {
+            try {
+                const glList = await this.fetchExperimentalClasses(trimmedId);
+                this.glJxbidMap[trimmedId] = glList;
+                this.statusMap[trimmedId].glReady = true;
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 运行时添加课程: ${trimmedId}`);
+                return true;
+            } catch (error) {
+                console.error(`${CONFIG.LOG.LOG_PREFIX} 运行时加载实验班失败:`, error);
+                // 即使实验班加载失败，课程仍然添加成功，只是状态未就绪
+                return true;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * 重置所有状态
      */
     reset() {
@@ -320,7 +514,59 @@ class CourseRegistrationManager {
         this.courses = [];
         this.statusMap = {};
         this.glJxbidMap = {};
+
+        // 重置后保存空数据
+        this.saveCurrentData();
+
         console.log(`${CONFIG.LOG.LOG_PREFIX} 所有状态已重置`);
+    }
+
+    /**
+     * 显示通知消息
+     * @param {string} message - 消息内容
+     * @param {string} type - 消息类型
+     */
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 20px;
+            border-radius: 5px;
+            color: white;
+            font-weight: bold;
+            z-index: ${CONFIG.Z_INDEX.NOTIFICATION};
+            min-width: 200px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        `;
+
+        const colors = {
+            success: '#28a745',
+            error: '#dc3545',
+            warning: '#ffc107',
+            info: '#007bff'
+        };
+        notification.style.backgroundColor = colors[type] || colors.info;
+        notification.textContent = message;
+
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            notification.style.opacity = '1';
+        }, 10);
+
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, 3000);
     }
 }
 

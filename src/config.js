@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.3
+ * @version 1.0.4
  * @description 专为中南民族大学学生设计的自动化课程注册助手配置模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -98,6 +98,12 @@ export const UI_CONFIG = {
         padding: '15px',
         fontSize: '12px',
         fontFamily: 'Arial, sans-serif'
+    },
+    // 滚动容器配置
+    SCROLLABLE_CONTAINER: {
+        MAX_COURSES_BEFORE_SCROLL: 4,
+        CONTAINER_HEIGHT: '250px',
+        SCROLLBAR_WIDTH: '8px'
     },
     // 按钮样式
     BUTTON_STYLE: {

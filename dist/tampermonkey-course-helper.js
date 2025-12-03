@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SCMU自动选课助手
 // @namespace    https://github.com/sushuheng/SCMU_CC_Helper
-// @version      1.0.3
+// @version      1.0.4
 // @description  专为中南民族大学学生设计的自动化课程注册助手
 // @author       SuShuHeng
 // @license      APACHE 2.0
@@ -19,7 +19,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.3
+ * @version 1.0.4
  * @description 专为中南民族大学学生设计的自动化课程注册助手
  *
  * Copyright (c) 2025 SuShuHeng
@@ -968,6 +968,21 @@
                     statusMapKeys: Object.keys(statusMap || {})
                 });
 
+                // 修复竞态条件：确保UI容器存在后再进行数据恢复
+                if (!this.container) {
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} UI容器不存在，强制创建容器...`);
+                    this.createControlPanel();
+                    if (this.panel) {
+                        this.panel.style.display = 'none'; // 初始隐藏，防止意外显示
+                        this.panel.id = 'course-registration-panel';
+                        this.makeDraggable(this.panel, this.panel);
+                        document.body.appendChild(this.panel);
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} UI容器创建成功`);
+                    } else {
+                        console.error(`${CONFIG.LOG.LOG_PREFIX} UI容器创建失败`);
+                    }
+                }
+
                 console.log(`${CONFIG.LOG.LOG_PREFIX} 开始调用restoreUIFromStorage...`);
                 this.restoreUIFromStorage(courses, courseDetails, statusMap);
             });
@@ -1039,7 +1054,7 @@
         /**
          * 从存储数据恢复UI界面
          */
-        restoreUIFromStorage(courses, courseDetails, statusMap) {
+        restoreUIFromStorage(courses, courseDetails, statusMap, retryCount = 0) {
             console.log(`${CONFIG.LOG.LOG_PREFIX} ===== 开始UI数据恢复 =====`);
             console.log(`${CONFIG.LOG.LOG_PREFIX} 恢复参数详情:`, {
                 courses: courses,
@@ -1047,7 +1062,8 @@
                 courseDetails: courseDetails,
                 courseDetailsCount: courseDetails?.length || 0,
                 statusMap: statusMap,
-                statusMapKeys: Object.keys(statusMap || {})
+                statusMapKeys: Object.keys(statusMap || {}),
+                retryCount: retryCount
             });
 
             if (!courses || courses.length === 0) {
@@ -1061,10 +1077,29 @@
                 // 等待UI完全初始化后再恢复数据
                 setTimeout(() => {
                     console.log(`${CONFIG.LOG.LOG_PREFIX} 检查UI容器状态...`);
+
+                    // 检查重试次数限制，防止无限重试
+                    const MAX_RETRY_COUNT = 2;
                     if (!this.container) {
-                        console.warn(`${CONFIG.LOG.LOG_PREFIX} UI容器未初始化，延迟500ms后重试`);
-                        setTimeout(() => this.restoreUIFromStorage(courses, courseDetails, statusMap), 500);
-                        return;
+                        if (retryCount >= MAX_RETRY_COUNT) {
+                            console.error(`${CONFIG.LOG.LOG_PREFIX} 达到最大重试次数(${MAX_RETRY_COUNT})，强制创建容器`);
+                            // 强制创建容器
+                            this.createControlPanel();
+                            if (this.panel) {
+                                this.panel.style.display = 'none'; // 初始隐藏，防止意外显示
+                                this.panel.id = 'course-registration-panel';
+                                this.makeDraggable(this.panel, this.panel);
+                                document.body.appendChild(this.panel);
+                                console.log(`${CONFIG.LOG.LOG_PREFIX} 强制创建UI容器成功`);
+                            } else {
+                                console.error(`${CONFIG.LOG.LOG_PREFIX} 强制创建UI容器失败，终止恢复流程`);
+                                return;
+                            }
+                        } else {
+                            console.warn(`${CONFIG.LOG.LOG_PREFIX} UI容器未初始化，延迟500ms后重试 (${retryCount + 1}/${MAX_RETRY_COUNT})`);
+                            setTimeout(() => this.restoreUIFromStorage(courses, courseDetails, statusMap, retryCount + 1), 500);
+                            return;
+                        }
                     }
 
                     console.log(`${CONFIG.LOG.LOG_PREFIX} UI容器已就绪，清空现有内容`);
@@ -3407,7 +3442,7 @@
 
             // 显示版权信息和启动消息
             console.log(`
-🎓 中南民族大学自动选课助手 v1.0.3
+🎓 中南民族大学自动选课助手 v1.0.4
 👤 作者: SuShuHeng (https://github.com/sushuheng)
 📜 许可证: APACHE 2.0
 ⚠️  免责声明: 本项目仅用于学习目的，请遵守学校相关规定

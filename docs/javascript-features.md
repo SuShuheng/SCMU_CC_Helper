@@ -1,14 +1,17 @@
-# 📘 JavaScript语言特性说明
+# 📘 JavaScript语言特性说明 (V1.0.4)
 
-> 🔍 **抢课助手使用的JavaScript技术详解**
+> 🔍 **抢课助手 V1.0.4 使用的JavaScript技术详解**
 
 ## 📋 目录
 
 1. [语言版本概述](#语言版本概述)
 2. [ES6+ 特性使用](#es6-特性使用)
 3. [浏览器API使用](#浏览器api使用)
-4. [代码架构模式](#代码架构模式)
-5. [最佳实践](#最佳实践)
+4. [V1.0.4 新增特性](#v104-新增特性)
+5. [事件驱动架构](#事件驱动架构)
+6. [数据持久化技术](#数据持久化技术)
+7. [代码架构模式](#代码架构模式)
+8. [最佳实践](#最佳实践)
 
 ---
 
@@ -20,11 +23,11 @@
 - **模块系统**: ES6 Modules
 - **编码规范**: ES6+ 语法规范
 
-### 为什么选择ES6+？
-1. **现代语法**: 更简洁、更易读
-2. **强大功能**: 模块化、Promise、解构赋值等
-3. **浏览器支持**: 主流浏览器全面支持
-4. **开发效率**: 减少样板代码，提高开发效率
+### V1.0.4 版本技术升级
+- **新增**: CustomEvent 事件系统
+- **新增**: GM_setValue/GM_getValue 存储API
+- **增强**: 错误处理和重试机制
+- **优化**: 内存管理和性能
 
 ---
 
@@ -38,23 +41,30 @@
 ```javascript
 // 配置对象 - 使用const声明常量
 const CONFIG = {
-    BASE_URL: 'https://xk.webvpn.scuec.edu.cn/xsxk',
-    POLLING_INTERVAL: 500
+    API: {
+        BASE_URL: 'https://xk.webvpn.scuec.edu.cn/xsxk',
+        ENDPOINTS: {
+            GET_EXPERIMENTAL_CLASS: '/loadData.xk?method=getGljxb&jxbid=',
+            COURSE_REGISTRATION: '/xkOper.xk?method=handleKzyxk&jxbid='
+        }
+    },
+    Z_INDEX: {  // V1.0.4 新增
+        BASE_LAYER: 9999,
+        NOTIFICATION: 10000,
+        MODAL: 10001
+    }
 };
 
 // 课程数组 - 使用let声明可变数组
 let courses = [];
 
-// 循环变量 - 使用let避免变量提升
-for (let i = 0; i < courses.length; i++) {
-    console.log(courses[i]);
-}
+// V1.0.4 新增：存储相关变量
+const STORAGE_KEYS = {
+    COURSES: 'scmu_courses',
+    EXPERIMENTAL_CLASSES: 'scmu_experimental_classes',
+    METADATA: 'scmu_metadata'
+};
 ```
-
-#### 优势
-- **块级作用域**: 避免变量污染
-- **常量保护**: const声明的变量不能重新赋值
-- **暂时性死区**: 避免在声明前使用变量
 
 ### 2. 箭头函数 (Arrow Functions)
 
@@ -62,751 +72,1133 @@ for (let i = 0; i < courses.length; i++) {
 使用箭头函数简化函数语法，保持this指向。
 
 ```javascript
-// 传统函数
-const manager = new CourseRegistrationManager();
+// V1.0.4 事件监听器增强
+class LocalDataManager {
+    constructor() {
+        // 箭头函数保持this指向
+        document.addEventListener('storage:dataLoaded', (event) => {
+            this.handleDataLoaded(event.detail);
+        });
+    }
+}
 
-// 箭头函数 - 保持this指向
-const startGrab = () => {
-    this.courses.forEach(courseId => {
-        this.trySelectCourse(courseId);
+// UI控制器中的事件处理
+const handleDeleteCourse = (div, inputId) => {
+    const courseId = inputId.dataset.currentCourseId || inputId.value.trim();
+
+    if (!courseId) {
+        if (div.parentNode) {
+            div.parentNode.removeChild(div);
+        }
+        this.updateScrollableContainer();
+        return;
+    }
+
+    // 确认对话框逻辑
+    this.showDeleteConfirmation(courseId, () => {
+        this.executeDeleteCourse(div, courseId);
     });
 };
 
-// 事件监听器
-document.addEventListener('click', (event) => {
-    console.log('点击事件:', event.target);
+// Promise链式调用 - V1.0.4 增强
+fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    headers: CONFIG.HTTP.HEADERS
+})
+.then(response => {
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    return response.json();
+})
+.then(data => {
+    if (!Array.isArray(data)) {
+        console.warn(`实验班数据返回异常:`, data);
+        return [];
+    }
+    return data.map(item => item.jxbid).filter(Boolean);
+})
+.catch(error => {
+    console.error('获取实验班失败:', error);
+    return [];
 });
-
-// Promise链式调用
-fetch(url)
-    .then(response => response.json())
-    .then(data => console.log(data))
-    .catch(error => console.error(error));
 ```
-
-#### 优势
-- **简洁语法**: 减少function关键字和大括号
-- **this绑定**: 自动绑定外层this
-- **隐式返回**: 单行表达式自动返回
 
 ### 3. 模板字面量 (Template Literals)
 
-#### 使用说明
-使用反引号创建字符串，支持插值和多行。
+#### V1.0.4 使用示例
 
 ```javascript
-// 字符串插值
+// 动态URL构建
 const courseId = '2024010101';
-const url = `https://xk.webvpn.scuec.edu.cn/xsxk/loadData.xk?method=getGljxb&jxbid=${courseId}`;
+const experimentalId = 'EXP001';
+const url = `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.COURSE_REGISTRATION}${courseId}&glJxbid=${experimentalId}`;
 
-// 多行字符串
-const helpText = `
-使用说明：
-1. 在输入框中输入课程ID
-2. 点击"开始抢课"按钮
-3. 查看控制台日志了解进度
+// V1.0.4 日志消息增强
+const logMessage = `✅ [成功] ${courseId} 实验班: ${experimentalId} 选课成功！时间: ${new Date().toLocaleTimeString()}`;
+console.log(logMessage);
+
+// 动态样式生成
+const notificationStyle = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 20px;
+    border-radius: 5px;
+    color: white;
+    font-weight: bold;
+    z-index: ${CONFIG.Z_INDEX.NOTIFICATION};
+    background-color: ${colors[type] || colors.info};
+    opacity: 0;
+    transition: opacity 0.3s ease;
 `;
 
-// 动态消息
-const logMessage = `⚠️ [${courseId}] 课程已满，但继续尝试`;
-console.log(logMessage);
+// 多行状态消息
+const statusMessage = `
+📊 选课状态报告
+总课程数: ${status.totalCourses}
+成功数量: ${status.successCount}
+运行时间: ${this.formatRunTime(this.calculateRunTime())}
+成功率: ${status.totalCourses > 0 ? Math.round(status.successCount / status.totalCourses * 100) : 0}%
+`;
 ```
-
-#### 优势
-- **字符串插值**: ${} 语法嵌入变量
-- **多行支持**: 自由换行不需要连接符
-- **表达式支持**: 可以在${}中使用任何JavaScript表达式
 
 ### 4. 解构赋值 (Destructuring)
 
-#### 使用说明
-从数组或对象中提取值的简洁语法。
+#### V1.0.4 高级解构应用
 
 ```javascript
-// 对象解构
-const { BASE_URL, ENDPOINTS } = API_CONFIG;
-const { success, data } = await fetchApi();
+// 配置解构 - V1.0.4 新增
+const {
+    API: { BASE_URL, ENDPOINTS },
+    UI: { SCROLLABLE_CONTAINER, Z_INDEX },
+    LOG: { LOG_PREFIX }
+} = CONFIG;
 
-// 数组解构
-const [course1, course2, ...restCourses] = courses;
+// 事件数据解构
+const handleDataLoaded = ({ courses, courseDetails, statusMap }) => {
+    console.log(`${LOG_PREFIX} 数据加载完成:`, { courses, courseDetails, statusMap });
 
-// 函数参数解构
-function createButton({ text, color = 'blue', size = 'medium' }) {
-    const button = document.createElement('button');
-    button.textContent = text;
-    button.style.color = color;
-    button.style.fontSize = size;
-    return button;
-}
+    // 数组解构
+    const [firstCourse, ...otherCourses] = courses;
+
+    // UI恢复
+    this.restoreUIFromStorage(courses, courseDetails, statusMap);
+};
+
+// API响应解构
+const { success, xksj, message } = await response.json();
+
+// 函数参数解构 - V1.0.4 增强
+const createConfirmationDialog = ({
+    title,
+    message,
+    onConfirm,
+    onCancel,
+    warningLevel = 'medium'
+}) => {
+    const colorSchemes = {
+        low: { bg: '#f8f9fa', border: '#6c757d' },
+        medium: { bg: '#fff3cd', border: '#ffc107' },
+        high: { bg: '#f8d7da', border: '#dc3545' }
+    };
+
+    const { bg, border } = colorSchemes[warningLevel];
+    // 对话框创建逻辑...
+};
 ```
-
-#### 优势
-- **代码简洁**: 一次提取多个值
-- **可读性强**: 清楚表明提取的属性
-- **默认值**: 支持解构时的默认值
 
 ### 5. Promise 和 async/await
 
-#### 使用说明
-处理异步操作的现代方式。
+#### V1.0.4 异步处理增强
 
 ```javascript
-// Promise链式调用
-function fetchExperimentalClasses(courseId) {
-    return fetch(`${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.GET_EXPERIMENTAL_CLASS}${courseId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (!Array.isArray(data)) {
-                console.warn('实验班数据格式异常');
-                return [];
-            }
-            return data.map(item => item.jxbid).filter(Boolean);
-        })
-        .catch(error => {
-            console.error('获取实验班失败:', error);
-            return [];
-        });
-}
-
-// async/await 语法
+// 并行处理实验班信息 - V1.0.4 优化
 async function initialize() {
-    console.log('开始加载课程实验班信息...');
+    console.log(`${CONFIG.LOG.LOG_PREFIX} 开始加载课程实验班信息...`);
 
     const tasks = this.courses.map(jxbid =>
         this.fetchExperimentalClasses(jxbid).then(glList => {
             this.glJxbidMap[jxbid] = glList;
             this.statusMap[jxbid].glReady = true;
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程 ${jxbid} 实验班信息加载完成，共 ${glList.length} 个实验班`);
         })
     );
 
     try {
         await Promise.all(tasks);
-        console.log('✅ 实验班加载完毕，开始抢课！');
+        console.log(`${CONFIG.LOG.LOG_PREFIX} ✅ 实验班加载完毕，开始选课！`);
         this.startLoop();
     } catch (error) {
-        console.error('初始化失败:', error);
+        console.error(`${CONFIG.LOG.LOG_PREFIX} 初始化失败:`, error);
     }
 }
 
-// 错误处理
-async function safeGrabCourse(courseId) {
-    try {
-        const result = await this.trySelectCourse(courseId);
-        return result;
-    } catch (error) {
-        console.error(`抢课失败 [${courseId}]:`, error);
-        throw error;
+// 运行时课程添加 - V1.0.4 新增
+async function addCourseRuntime(jxbid) {
+    if (!jxbid || jxbid.trim() === '') return false;
+
+    const trimmedId = jxbid.trim();
+    if (this.courses.includes(trimmedId)) return false;
+
+    // 添加课程到列表
+    this.courses.push(trimmedId);
+    this.initCourseState(trimmedId);
+
+    // 如果选课正在进行，立即加载实验班信息
+    if (this.intervalId) {
+        try {
+            const glList = await this.fetchExperimentalClasses(trimmedId);
+            this.glJxbidMap[trimmedId] = glList;
+            this.statusMap[trimmedId].glReady = true;
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 运行时添加课程: ${trimmedId}`);
+            return true;
+        } catch (error) {
+            console.error(`${CONFIG.LOG.LOG_PREFIX} 运行时加载实验班失败:`, error);
+            return true; // 即使实验班加载失败，课程仍然添加成功
+        }
+    }
+
+    return true;
+}
+
+// 带重试机制的API调用 - V1.0.4 增强
+async function safeFetch(url, options = {}, retries = CONFIG.GRAB.MAX_RETRY_COUNT) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const response = await fetch(url, {
+                ...options,
+                signal: AbortSignal.timeout(CONFIG.GRAB.REQUEST_TIMEOUT)  // 超时控制
+            });
+
+            if (response.ok) {
+                return response;
+            }
+
+            // 检查是否是课程满员
+            if (this.checkCourseFull(await response.text())) {
+                console.log(`⚠️ [${jxbid}] 课程已满，但继续尝试`);
+                continue;
+            }
+
+        } catch (error) {
+            if (i === retries - 1) throw error;
+            console.log(`请求失败，第 ${i + 1} 次重试...:`, error);
+        }
     }
 }
 ```
-
-#### 优势
-- **异步友好**: 更直观的异步代码写法
-- **错误处理**: 统一的try/catch错误处理
-- **链式调用**: Promise支持链式操作
 
 ### 6. 模块系统 (ES6 Modules)
 
-#### 使用说明
-使用import/export实现模块化。
+#### V1.0.4 模块结构更新
 
 ```javascript
-// config.js - 配置模块
-export const API_CONFIG = {
-    BASE_URL: 'https://xk.webvpn.scuec.edu.cn/xsxk',
-    ENDPOINTS: {
-        GET_EXPERIMENTAL_CLASS: '/loadData.xk?method=getGljxb&jxbid=',
-        COURSE_REGISTRATION: '/xkOper.xk?method=handleKzyxk&jxbid='
+// config.js - V1.0.4 增强配置
+export const API_CONFIG = { /* ... */ };
+export const GRAB_CONFIG = { /* ... */ };
+export const UI_CONFIG = {
+    SCROLLABLE_CONTAINER: {  // V1.0.4 新增
+        MAX_COURSES_BEFORE_SCROLL: 4,
+        CONTAINER_HEIGHT: '250px',
+        SCROLLBAR_WIDTH: '8px'
     }
 };
+export const Z_INDEX_CONFIG = { /* V1.0.4 新增 */ };
 
-export default CONFIG;
+// local-data-manager.js - V1.0.4 新增模块
+export class LocalDataManager {
+    constructor() {
+        this.STORAGE_KEYS = {
+            COURSES: 'scmu_courses',
+            EXPERIMENTAL_CLASSES: 'scmu_experimental_classes',
+            METADATA: 'scmu_metadata'
+        };
+    }
 
-// course-registration.js - 核心模块
+    saveCoursesData(courses, experimentalClasses, statusMap) { /* ... */ }
+    loadCoursesData() { /* ... */ }
+    updateCourseName(courseId, courseName) { /* ... */ }
+    removeCourse(courseId) { /* ... */ }
+}
+
+// course-registration.js - V1.0.4 增强
 import { CONFIG } from './config.js';
+import { LocalDataManager } from './local-data-manager.js';
 
 export class CourseRegistrationManager {
-    // 类实现
-}
-
-export const courseManager = new CourseRegistrationManager();
-export default courseManager;
-
-// 主文件 - 导入使用
-import courseManager from './course-registration.js';
-import uiController from './ui-controller.js';
-import { CONFIG } from './config.js';
-```
-
-#### 优势
-- **模块化**: 代码分离，职责清晰
-- **依赖管理**: 明确的导入导出关系
-- **tree-shaking**: 打包工具可移除未使用代码
-
-### 7. 数组方法增强
-
-#### 使用说明
-使用现代数组方法简化操作。
-
-```javascript
-// map - 转换数组
-const courseNames = courses.map(course => course.name);
-const experimentalIds = experimentalClasses.map(item => item.jxbid);
-
-// filter - 过滤数组
-const validCourses = courses.filter(course => course.id && course.name);
-const availableClasses = experimentalClasses.filter(cls => cls.available);
-
-// forEach - 遍历数组
-courses.forEach(courseId => {
-    this.trySelectCourse(courseId);
-});
-
-// some - 检查是否有满足条件的元素
-const isFull = CONFIG.GRAB.COURSE_FULL_KEYWORDS.some(keyword => html.includes(keyword));
-
-// includes - 检查包含关系
-if (courses.includes(targetCourseId)) {
-    console.log('课程已在抢课列表中');
-}
-```
-
-#### 优势
-- **函数式编程**: 链式调用，代码简洁
-- **可读性强**: 方法名称直观表达意图
-- **性能优化**: 原生方法，执行效率高
-
-### 8. 对象方法增强
-
-#### 使用说明
-使用现代对象语法简化操作。
-
-```javascript
-// 对象属性简写
-const id = '2024010101';
-const name = '高等数学';
-const course = { id, name };  // 等同于 { id: id, name: name }
-
-// 对象方法简写
-const courseManager = {
-    courses: [],
-
-    addCourse(courseId) {
-        this.courses.push(courseId);
-    },
-
-    startLoop() {
-        console.log('开始抢课');
+    constructor() {
+        this.localDataManager = new LocalDataManager();  // V1.0.4 新增
+        this.initEventListeners();  // V1.0.4 新增
+        this.loadSavedData();  // V1.0.4 新增
     }
-};
-
-// 对象解构和默认值
-function displayCourseInfo({ id, name = '未知课程', credits = 0 }) {
-    console.log(`课程: ${name} (ID: ${id}, 学分: ${credits})`);
 }
 
-// 扩展运算符
-const defaultConfig = { timeout: 5000, retries: 3 };
-const customConfig = { timeout: 10000 };
-const finalConfig = { ...defaultConfig, ...customConfig };
+// ui-controller.js - V1.0.4 重构
+import { CONFIG } from './config.js';
+import { UI_STATES } from './ui-states.js';  // V1.0.4 新增常量
+
+export class UIController {
+    constructor(courseManager) {
+        this.courseManager = courseManager;
+        this.currentState = UI_STATES.FLOATING_BUTTON;  // V1.0.4 新增
+        this.initStorageEventListeners();  // V1.0.4 新增
+    }
+}
 ```
 
 ---
 
 ## 🌐 浏览器API使用
 
-### 1. Fetch API
-
-#### 使用说明
-现代的网络请求API，替代XMLHttpRequest。
+### 1. Fetch API - V1.0.4 增强
 
 ```javascript
-// 基本GET请求
-async function fetchExperimentalClasses(courseId) {
-    const url = `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.GET_EXPERIMENTAL_CLASS}${courseId}`;
+// 带完整错误处理的请求
+async function trySelectCourse(jxbid) {
+    const state = this.statusMap[jxbid];
+    if (state.success || !state.glReady) return;
 
-    const response = await fetch(url, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-            'accept': '*/*',
-            'x-requested-with': 'XMLHttpRequest'
+    const glList = this.glJxbidMap[jxbid];
+    let url = "";
+    let glInfo = "";
+
+    // V1.0.4: 智能URL构建
+    if (glList.length > 0) {
+        if (state.glAttemptIndex >= glList.length) {
+            console.log(`❌ [${jxbid}] 所有实验班尝试失败`);
+            state.glAttemptIndex = 0;
         }
-    });
 
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const glJxbid = glList[state.glAttemptIndex];
+        url = `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.COURSE_REGISTRATION}${encodeURIComponent(jxbid)}&glJxbid=${encodeURIComponent(glJxbid)}`;
+        glInfo = ` 实验班: ${glJxbid}`;
+    } else {
+        url = `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.COURSE_REGISTRATION}${encodeURIComponent(jxbid)}`;
     }
 
-    return await response.json();
-}
-
-// 错误处理和重试
-async function safeFetch(url, options = {}, retries = 3) {
-    for (let i = 0; i < retries; i++) {
-        try {
-            const response = await fetch(url, options);
-            return response;
-        } catch (error) {
-            if (i === retries - 1) throw error;
-            console.log(`请求失败，第 ${i + 1} 次重试...`);
-        }
-    }
-}
-```
-
-### 2. DOM 操作 API
-
-#### 使用说明
-操作网页元素的现代API。
-
-```javascript
-// 创建元素
-function createControlPanel() {
-    const panel = document.createElement('div');
-    panel.style.cssText = `
-        position: fixed;
-        top: 20px;
-        left: 20px;
-        padding: 20px;
-        background-color: #f1f1f1;
-        border-radius: 10px;
-    `;
-
-    return panel;
-}
-
-// 事件监听
-function setupEventListeners() {
-    // 按钮点击事件
-    startButton.addEventListener('click', async () => {
-        await courseManager.initialize();
-        startButton.disabled = true;
-    });
-
-    // 输入框输入事件
-    courseInput.addEventListener('input', (event) => {
-        const value = event.target.value.trim();
-        if (value) {
-            courseManager.addCourse(value);
-        }
-    });
-
-    // 拖拽事件
-    panel.addEventListener('mousedown', (e) => {
-        isMouseDown = true;
-        offsetX = e.clientX - panel.offsetLeft;
-        offsetY = e.clientY - panel.offsetTop;
-    });
-}
-
-// 查询元素
-const courseContainer = document.getElementById('course-container');
-const allButtons = document.querySelectorAll('button');
-const firstInput = document.querySelector('input[type="text"]');
-```
-
-### 3. 定时器 API
-
-#### 使用说明
-设置定时任务的API。
-
-```javascript
-// setInterval - 定时重复执行
-function startLoop() {
-    if (this.intervalId) {
-        console.warn("定时器已启动！");
-        return;
-    }
-
-    this.intervalId = setInterval(() => {
-        this.courses.forEach(jxbid => {
-            this.trySelectCourse(jxbid);
-        });
-    }, CONFIG.GRAB.POLLING_INTERVAL);  // 500ms间隔
-}
-
-// clearInterval - 停止定时器
-function stopLoop() {
-    if (this.intervalId) {
-        clearInterval(this.intervalId);
-        this.intervalId = null;
-        console.log("定时器已停止！");
-    }
-}
-
-// setTimeout - 延时执行
-function showNotification(message, type = 'info') {
-    const notification = createNotificationElement(message, type);
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-        notification.style.opacity = '1';
-    }, 10);
-
-    setTimeout(() => {
-        notification.style.opacity = '0';
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 300);
-    }, 3000);
-}
-```
-
-### 4. Console API
-
-#### 使用说明
-调试和日志输出API。
-
-```javascript
-// 不同级别的日志
-console.log('普通日志信息');
-console.warn('警告信息');
-console.error('错误信息');
-console.info('信息提示');
-
-// 格式化输出
-const courseId = '2024010101';
-console.log(`正在抢课: ${courseId}`);
-
-// 对象输出
-const status = courseManager.getStatus();
-console.log('抢课状态:', status);
-console.table(status.courses);  // 表格形式输出
-
-// 分组输出
-console.group('课程抢课详情');
-courses.forEach(course => {
-    console.log(`- ${course.id}: ${course.success ? '成功' : '进行中'}`);
-});
-console.groupEnd();
-```
-
----
-
-## 🏗️ 代码架构模式
-
-### 1. 模块模式 (Module Pattern)
-
-#### 使用说明
-使用IIFE和ES6模块实现封装。
-
-```javascript
-// 传统IIFE模块模式
-(function() {
-    'use strict';
-
-    const privateVariable = '私有变量';
-
-    function privateFunction() {
-        console.log('私有函数');
-    }
-
-    // 暴露公共接口
-    window.CourseHelper = {
-        publicMethod: function() {
-            privateFunction();
-            return privateVariable;
-        }
-    };
-})();
-
-// ES6模块模式
-export class CourseRegistrationManager {
-    #privateField = '私有字段';  // 私有字段（ES2022+）
-
-    #privateMethod() {
-        console.log('私有方法');
-    }
-
-    publicMethod() {
-        this.#privateMethod();
-        return this.#privateField;
-    }
-}
-```
-
-### 2. 观察者模式 (Observer Pattern)
-
-#### 使用说明
-使用事件系统实现松耦合。
-
-```javascript
-// 事件发布者
-class EventEmitter {
-    constructor() {
-        this.events = {};
-    }
-
-    on(eventName, callback) {
-        if (!this.events[eventName]) {
-            this.events[eventName] = [];
-        }
-        this.events[eventName].push(callback);
-    }
-
-    emit(eventName, data) {
-        if (this.events[eventName]) {
-            this.events[eventName].forEach(callback => callback(data));
-        }
-    }
-}
-
-// 使用示例
-const eventBus = new EventEmitter();
-
-// 监听抢课成功事件
-eventBus.on('course:success', (courseData) => {
-    console.log('抢课成功:', courseData);
-    saveToHistory(courseData);
-});
-
-// 触发抢课成功事件
-eventBus.emit('course:success', { courseId: '2024010101', timestamp: Date.now() });
-```
-
-### 3. 策略模式 (Strategy Pattern)
-
-#### 使用说明
-根据不同情况使用不同的处理策略。
-
-```javascript
-// 抢课策略
-const grabStrategies = {
-    // 普通课程抢课策略
-    normal: {
-        buildUrl: (courseId) => `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.COURSE_REGISTRATION}${courseId}`,
-        handleResponse: (data) => data.success
-    },
-
-    // 实验班抢课策略
-    experimental: {
-        buildUrl: (courseId, experimentalId) =>
-            `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.COURSE_REGISTRATION}${courseId}&glJxbid=${experimentalId}`,
-        handleResponse: (data) => data.success
-    }
-};
-
-// 使用策略
-function trySelectCourse(courseId, strategy = 'normal') {
-    const strategyConfig = grabStrategies[strategy];
-    const url = strategyConfig.buildUrl(courseId);
-
-    return fetch(url).then(response => response.json())
-        .then(data => strategyConfig.handleResponse(data));
-}
-```
-
----
-
-## ✨ 最佳实践
-
-### 1. 代码质量
-
-#### 变量命名
-```javascript
-// ✅ 好的命名 - 清晰表达意图
-const coursesWaitingForGrab = [];
-const experimentalClassIds = [];
-const registrationStatusMap = {};
-
-// ❌ 避免的命名 - 含义模糊
-const arr = [];
-const temp = [];
-const map = {};
-```
-
-#### 函数设计
-```javascript
-// ✅ 单一职责函数
-function validateCourseId(courseId) {
-    return /^\d{10}$/.test(courseId);
-}
-
-function addCourseToGrabList(courseId) {
-    if (!validateCourseId(courseId)) {
-        throw new Error('无效的课程ID格式');
-    }
-    this.courses.push(courseId);
-}
-
-// ❌ 职责混合的函数
-function addCourse(courseId) {
-    if (!/^\d{10}$/.test(courseId)) {  // 验证逻辑
-        throw new Error('无效ID');
-    }
-    this.courses.push(courseId);       // 添加逻辑
-    console.log('已添加课程');         // 日志逻辑
-    this.updateUI();                   // UI更新逻辑
-}
-```
-
-### 2. 错误处理
-
-#### 统一错误处理
-```javascript
-class CourseGrabError extends Error {
-    constructor(message, code, details = {}) {
-        super(message);
-        this.name = 'CourseGrabError';
-        this.code = code;
-        this.details = details;
-    }
-}
-
-// 使用自定义错误
-async function trySelectCourse(courseId) {
     try {
-        const response = await fetch(buildUrl(courseId));
+        const response = await fetch(url, {
+            method: 'GET',
+            credentials: CONFIG.HTTP.CREDENTIALS,
+            headers: CONFIG.HTTP.HEADERS
+        });
 
         if (!response.ok) {
-            throw new CourseGrabError(
-                '网络请求失败',
-                'NETWORK_ERROR',
-                { status: response.status, courseId }
-            );
+            const html = await response.text();
+            if (this.checkCourseFull(html)) {
+                console.log(`⚠️ [${jxbid}] 课程已满，但继续尝试`);
+            } else {
+                console.error(`🚫 [${jxbid}] 返回非 JSON 数据：`, html);
+            }
+            throw new Error(`请求失败：HTTP ${response.status}`);
         }
 
         const data = await response.json();
-        return data;
 
-    } catch (error) {
-        if (error instanceof CourseGrabError) {
-            // 处理自定义错误
-            console.error(`抢课错误 [${error.code}]: ${error.message}`);
+        // V1.0.4: 成功处理和事件发布
+        if (data.success) {
+            console.log(`✅ [成功] ${jxbid}${glInfo} 选课成功！时间: ${data.xksj || new Date().toLocaleTimeString()}`);
+            state.success = true;
+
+            // 自动保存选课成功状态 - V1.0.4 新增
+            this.saveCurrentData();
+
+            // 触发成功事件 - V1.0.4 新增
+            const event = new CustomEvent('course:success', {
+                detail: { courseId: jxbid, timestamp: Date.now() }
+            });
+            document.dispatchEvent(event);
         } else {
-            // 处理其他错误
-            console.error('未知错误:', error);
+            console.log(`⚠️ [${jxbid}] 选课失败${glInfo ? `，继续尝试下一个实验班` : ""}：`, data);
+            if (glList.length > 0) {
+                state.glAttemptIndex++;
+            }
         }
-        throw error;
+    } catch (error) {
+        console.error(`🚫 [${jxbid}] 请求错误:`, error);
+        if (glList.length > 0) {
+            state.glAttemptIndex++;
+        }
     }
 }
 ```
 
-### 3. 性能优化
+### 2. CustomEvent API - V1.0.4 新增
 
-#### 防抖和节流
 ```javascript
-// 防抖函数 - 避免频繁操作
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
+// 事件发布系统 - V1.0.4 核心特性
+class EventEmitter {
+    static emit(eventName, detail = {}) {
+        const event = new CustomEvent(eventName, { detail });
+        document.dispatchEvent(event);
+    }
+
+    static on(eventName, callback) {
+        document.addEventListener(eventName, callback);
+    }
+
+    static off(eventName, callback) {
+        document.removeEventListener(eventName, callback);
+    }
 }
 
-// 节流函数 - 限制执行频率
-function throttle(func, limit) {
-    let inThrottle;
-    return function() {
-        const args = arguments;
-        const context = this;
-        if (!inThrottle) {
-            func.apply(context, args);
-            inThrottle = true;
-            setTimeout(() => inThrottle = false, limit);
+// 在课程注册管理器中使用
+class CourseRegistrationManager {
+    initEventListeners() {
+        // 监听选课成功事件
+        document.addEventListener('course:success', (event) => {
+            const { courseId } = event.detail;
+            console.log(`🎉 选课成功! 课程: ${courseId}`);
+            this.showNotification(`成功抢到课程: ${courseId}`, 'success');
+        });
+    }
+
+    async trySelectCourse(jxbid) {
+        // ... 选课逻辑 ...
+
+        if (data.success) {
+            // 发布选课成功事件
+            EventEmitter.emit('course:success', {
+                courseId: jxbid,
+                timestamp: Date.now(),
+                experimentalClass: glInfo
+            });
         }
-    };
+    }
+
+    startLoop() {
+        this.intervalId = setInterval(() => {
+            this.courses.forEach(jxbid => {
+                this.trySelectCourse(jxbid);
+            });
+        }, CONFIG.GRAB.POLLING_INTERVAL);
+
+        // 发布选课开始事件
+        EventEmitter.emit('courses:started', {
+            courseCount: this.courses.length,
+            timestamp: Date.now()
+        });
+    }
+
+    stopLoop() {
+        if (this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 定时器已停止！`);
+
+            // 发布选课停止事件
+            EventEmitter.emit('courses:stopped', {
+                timestamp: Date.now(),
+                finalStatus: this.getStatus()
+            });
+        }
+    }
+}
+```
+
+### 3. GM_setValue/GM_getValue API - V1.0.4 新增
+
+```javascript
+// 本地数据管理器 - 油猴脚本存储API
+class LocalDataManager {
+    checkStorageAvailability() {
+        try {
+            return typeof GM_setValue !== 'undefined' && typeof GM_getValue !== 'undefined';
+        } catch (e) {
+            console.error(`${CONFIG.LOG.LOG_PREFIX} 存储功能检测失败:`, e);
+            return false;
+        }
+    }
+
+    saveCoursesData(courses, experimentalClasses, statusMap) {
+        if (!this.storageAvailable) {
+            console.warn(`${CONFIG.LOG.LOG_PREFIX} 存储功能不可用，数据无法保存`);
+            return false;
+        }
+
+        try {
+            const storageData = {
+                courses: courses.map(courseId => ({
+                    id: courseId,
+                    name: this.DEFAULT_COURSE_NAME,
+                    addedTime: Date.now(),
+                    status: {
+                        success: statusMap[courseId]?.success || false
+                    }
+                })),
+                experimentalClasses,
+                metadata: {
+                    lastSaved: Date.now(),
+                    version: this.DATA_VERSION,
+                    sessionCount: this.getSessionCount() + 1
+                }
+            };
+
+            // 使用油猴存储API
+            GM_setValue(this.STORAGE_KEYS.COURSES, JSON.stringify(storageData.courses));
+            GM_setValue(this.STORAGE_KEYS.EXPERIMENTAL_CLASSES, JSON.stringify(storageData.experimentalClasses));
+            GM_setValue(this.STORAGE_KEYS.METADATA, JSON.stringify(storageData.metadata));
+
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 数据保存成功，共${storageData.courses.length}门课程`);
+            return true;
+        } catch (error) {
+            console.error(`${CONFIG.LOG.LOG_PREFIX} 保存数据失败:`, error);
+            return false;
+        }
+    }
+
+    loadCoursesData() {
+        if (!this.storageAvailable) {
+            console.warn(`${CONFIG.LOG.LOG_PREFIX} 存储功能不可用，无法加载保存的数据`);
+            return null;
+        }
+
+        try {
+            // 使用油猴存储API
+            const coursesStr = GM_getValue(this.STORAGE_KEYS.COURSES, '[]');
+            const experimentalClassesStr = GM_getValue(this.STORAGE_KEYS.EXPERIMENTAL_CLASSES, '{}');
+            const metadataStr = GM_getValue(this.STORAGE_KEYS.METADATA, '{}');
+
+            const courses = JSON.parse(coursesStr);
+            const experimentalClasses = JSON.parse(experimentalClassesStr);
+            const metadata = JSON.parse(metadataStr);
+
+            if (courses.length === 0) {
+                return null;
+            }
+
+            return {
+                courses: courses.map(course => course.id),
+                courseDetails: courses,
+                experimentalClasses,
+                metadata
+            };
+        } catch (error) {
+            console.error(`${CONFIG.LOG.LOG_PREFIX} 加载本地存储数据失败:`, error);
+            return null;
+        }
+    }
+
+    clearAllData() {
+        if (!this.storageAvailable) return false;
+
+        try {
+            Object.values(this.STORAGE_KEYS).forEach(key => {
+                GM_deleteValue(key);
+            });
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 所有本地存储数据已清空`);
+            return true;
+        } catch (error) {
+            console.error(`${CONFIG.LOG.LOG_PREFIX} 清空数据失败:`, error);
+            return false;
+        }
+    }
+}
+```
+
+---
+
+## 🆕 V1.0.4 新增特性
+
+### 1. 事件驱动架构
+
+#### CustomEvent 系统设计
+
+```javascript
+// 事件常量定义
+const EVENT_TYPES = {
+    DATA_LOADED: 'storage:dataLoaded',
+    COURSE_SUCCESS: 'course:success',
+    COURSES_STARTED: 'courses:started',
+    COURSES_STOPPED: 'courses:stopped',
+    AUTO_STOPPED: 'selection:auto-stopped'
+};
+
+// 事件管理器
+class EventManager {
+    static listeners = new Map();
+
+    static register(eventType, callback, id = null) {
+        if (!this.listeners.has(eventType)) {
+            this.listeners.set(eventType, new Map());
+        }
+
+        const listenerId = id || Symbol('listener');
+        this.listeners.get(eventType).set(listenerId, callback);
+
+        // 添加到DOM
+        document.addEventListener(eventType, callback);
+
+        return listenerId;
+    }
+
+    static unregister(eventType, listenerId) {
+        if (this.listeners.has(eventType)) {
+            const callback = this.listeners.get(eventType).get(listenerId);
+            if (callback) {
+                document.removeEventListener(eventType, callback);
+                this.listeners.get(eventType).delete(listenerId);
+            }
+        }
+    }
+
+    static emit(eventType, detail = {}) {
+        const event = new CustomEvent(eventType, { detail });
+        document.dispatchEvent(event);
+
+        // 调试日志
+        if (CONFIG.DEV.DEBUG_MODE) {
+            console.log(`📡 事件发射: ${eventType}`, detail);
+        }
+    }
 }
 
 // 使用示例
-const searchCourses = debounce((keyword) => {
-    // 搜索课程逻辑
-}, 300);
+class UIController {
+    initStorageEventListeners() {
+        // 注册数据加载事件监听器
+        EventManager.register(EVENT_TYPES.DATA_LOADED, (event) => {
+            const { courses, courseDetails, statusMap } = event.detail;
+            this.restoreUIFromStorage(courses, courseDetails, statusMap);
+        }, 'ui-data-loaded');
+    }
 
-const updateStatus = throttle(() => {
-    // 更新状态显示
-}, 1000);
+    initCourseEventListeners() {
+        // 注册选课成功事件监听器
+        EventManager.register(EVENT_TYPES.COURSE_SUCCESS, (event) => {
+            const { courseId } = event.detail;
+            this.showNotification(`成功抢到课程: ${courseId}`, 'success');
+        }, 'ui-course-success');
+    }
+}
 ```
 
-### 4. 代码注释
+### 2. 数据持久化技术
 
-#### JSDoc 注释规范
+#### 存储数据结构设计
+
 ```javascript
-/**
- * 获取课程的实验班信息
- * @param {string} courseId - 课程ID
- * @param {Object} [options] - 可选参数
- * @param {number} [options.timeout=5000] - 请求超时时间(毫秒)
- * @returns {Promise<string[]>} 实验班ID列表
- * @throws {CourseGrabError} 当网络请求失败时抛出错误
- * @example
- * // 基本使用
- * const classes = await fetchExperimentalClasses('2024010101');
- *
- * // 带超时设置
- * const classes = await fetchExperimentalClasses('2024010101', { timeout: 10000 });
- */
-async function fetchExperimentalClasses(courseId, options = {}) {
-    // 实现代码...
+// 存储数据结构
+const STORAGE_SCHEMA = {
+    courses: [
+        {
+            id: "12345678901",                    // 课程ID
+            name: "高等数学",                      // 课程名称
+            addedTime: 1701234567890,             // 添加时间戳
+            nameUpdatedTime: 1701234567890,       // 名称更新时间
+            status: {
+                success: false,                   // 选课成功状态
+                lastAttempt: 1701234567890        // 最后尝试时间
+            }
+        }
+    ],
+    experimentalClasses: {
+        "12345678901": ["EXP001", "EXP002"],   // 实验班映射
+        "98765432109": ["EXP003"]
+    },
+    metadata: {
+        lastSaved: 1701234567890,              // 最后保存时间
+        version: "1.0.0",                      // 数据版本
+        sessionCount: 5,                        // 使用会话数
+        firstInstall: 1701000000000            // 首次安装时间
+    }
+};
+
+// 数据迁移和兼容性处理
+class DataMigration {
+    static migrateToV1_0_0(oldData) {
+        // V1.0.4 迁移逻辑
+        if (oldData.version === '0.9.0') {
+            return {
+                ...oldData,
+                courses: oldData.courses.map(course => ({
+                    ...course,
+                    status: course.status || { success: false }
+                })),
+                metadata: {
+                    ...oldData.metadata,
+                    version: '1.0.0'
+                }
+            };
+        }
+        return oldData;
+    }
+
+    static validateData(data) {
+        // 数据完整性验证
+        const required = ['courses', 'experimentalClasses', 'metadata'];
+        return required.every(key => data.hasOwnProperty(key));
+    }
+}
+```
+
+### 3. 三态UI系统
+
+#### UI状态管理
+
+```javascript
+// UI状态常量
+const UI_STATES = {
+    FLOATING_BUTTON: 'floating_button',
+    FULL_PANEL: 'full_panel',
+    MINIMIZED_STATUS: 'minimized_status'
+};
+
+// UI状态机
+class UIStateMachine {
+    constructor(initialState = UI_STATES.FLOATING_BUTTON) {
+        this.currentState = initialState;
+        this.stateHistory = [];
+    }
+
+    transition(newState, context = {}) {
+        if (!this.isValidTransition(this.currentState, newState)) {
+            console.warn(`无效的状态转换: ${this.currentState} -> ${newState}`);
+            return false;
+        }
+
+        // 记录状态历史
+        this.stateHistory.push({
+            from: this.currentState,
+            to: newState,
+            timestamp: Date.now(),
+            context
+        });
+
+        this.currentState = newState;
+        return true;
+    }
+
+    isValidTransition(from, to) {
+        const validTransitions = {
+            [UI_STATES.FLOATING_BUTTON]: [UI_STATES.FULL_PANEL],
+            [UI_STATES.FULL_PANEL]: [UI_STATES.FLOATING_BUTTON, UI_STATES.MINIMIZED_STATUS],
+            [UI_STATES.MINIMIZED_STATUS]: [UI_STATES.FULL_PANEL, UI_STATES.FLOATING_BUTTON]
+        };
+
+        return validTransitions[from]?.includes(to) || false;
+    }
+
+    cycle(isSelecting) {
+        if (isSelecting) {
+            switch (this.currentState) {
+                case UI_STATES.FULL_PANEL:
+                    this.transition(UI_STATES.MINIMIZED_STATUS);
+                    break;
+                case UI_STATES.MINIMIZED_STATUS:
+                    this.transition(UI_STATES.FLOATING_BUTTON);
+                    break;
+                default:
+                    this.transition(UI_STATES.FULL_PANEL);
+            }
+        } else {
+            this.transition(
+                this.currentState === UI_STATES.FLOATING_BUTTON ?
+                    UI_STATES.FULL_PANEL :
+                    UI_STATES.FLOATING_BUTTON
+            );
+        }
+    }
 }
 ```
 
 ---
 
-## 📊 语言特性统计
+## 🏗️ 事件驱动架构
 
-### 抢课助手项目使用的ES6+特性:
+### 事件系统设计模式
 
-| 特性类别 | 具体特性 | 使用频率 | 代码示例 |
-|---------|---------|---------|----------|
-| **变量声明** | const/let | ⭐⭐⭐⭐⭐ | `const CONFIG = {}` |
-| **函数** | 箭头函数 | ⭐⭐⭐⭐⭐ | `() => console.log('')` |
-| **字符串** | 模板字面量 | ⭐⭐⭐⭐⭐ | `` `${courseId}` `` |
-| **对象** | 解构赋值 | ⭐⭐⭐⭐ | `const { id, name } = course` |
-| **数组** | map/filter/forEach | ⭐⭐⭐⭐ | `courses.map(c => c.id)` |
-| **异步** | Promise/async-await | ⭐⭐⭐⭐⭐ | `await fetch(url)` |
-| **模块** | import/export | ⭐⭐⭐⭐ | `import { CONFIG } from './config'` |
-| **类** | class/extends | ⭐⭐⭐ | `class CourseManager {}` |
-| **对象** | 属性简写 | ⭐⭐⭐ | `const course = { id, name }` |
-| **扩展运算符** | ... | ⭐⭐ | `const newConfig = { ...default, ...custom }` |
+```javascript
+// 事件发布订阅模式
+class EventBus {
+    constructor() {
+        this.events = new Map();
+        this.middlewares = [];
+    }
 
-### 浏览器API使用统计:
+    // 添加中间件
+    use(middleware) {
+        this.middlewares.push(middleware);
+    }
 
-| API类别 | 具体API | 使用场景 | 代码示例 |
-|---------|---------|----------|----------|
-| **网络请求** | fetch API | 课程注册请求 | `fetch(url, options)` |
-| **DOM操作** | createElement | 创建UI元素 | `document.createElement('div')` |
-| **事件处理** | addEventListener | 用户交互 | `button.addEventListener('click')` |
-| **定时器** | setInterval/setTimeout | 抢课轮询 | `setInterval(() => {}, 500)` |
-| **控制台** | console.log | 调试输出 | `console.log('抢课开始')` |
-| **本地存储** | localStorage | 保存历史记录 | `localStorage.setItem('key', 'value')` |
+    // 订阅事件
+    on(eventName, callback, options = {}) {
+        if (!this.events.has(eventName)) {
+            this.events.set(eventName, new Set());
+        }
+
+        const listener = {
+            callback,
+            once: options.once || false,
+            context: options.context || null
+        };
+
+        this.events.get(eventName).add(listener);
+        return () => this.off(eventName, callback);
+    }
+
+    // 取消订阅
+    off(eventName, callback) {
+        if (this.events.has(eventName)) {
+            const listeners = this.events.get(eventName);
+            listeners.forEach(listener => {
+                if (listener.callback === callback) {
+                    listeners.delete(listener);
+                }
+            });
+        }
+    }
+
+    // 发布事件
+    async emit(eventName, data = {}) {
+        // 执行中间件
+        let eventData = data;
+        for (const middleware of this.middlewares) {
+            eventData = await middleware(eventName, eventData);
+        }
+
+        if (this.events.has(eventName)) {
+            const listeners = Array.from(this.events.get(eventName));
+
+            for (const listener of listeners) {
+                try {
+                    await listener.callback.call(
+                        listener.context,
+                        { type: eventName, data: eventData }
+                    );
+
+                    // 一次性监听器
+                    if (listener.once) {
+                        this.events.get(eventName).delete(listener);
+                    }
+                } catch (error) {
+                    console.error(`事件处理器错误 [${eventName}]:`, error);
+                }
+            }
+        }
+    }
+}
+
+// 事件中间件示例
+const loggingMiddleware = async (eventName, data) => {
+    console.log(`📡 事件: ${eventName}`, data);
+    return data;
+};
+
+const errorHandlingMiddleware = async (eventName, data) => {
+    if (eventName.includes('error')) {
+        console.error('🚫 错误事件:', data);
+    }
+    return data;
+};
+
+// 使用事件总线
+const eventBus = new EventBus();
+eventBus.use(loggingMiddleware);
+eventBus.use(errorHandlingMiddleware);
+
+// 事件定义
+const EVENTS = {
+    // 数据事件
+    DATA_LOADED: 'data:loaded',
+    DATA_SAVED: 'data:saved',
+    DATA_ERROR: 'data:error',
+
+    // 课程事件
+    COURSE_ADDED: 'course:added',
+    COURSE_REMOVED: 'course:removed',
+    COURSE_UPDATED: 'course:updated',
+    COURSE_SUCCESS: 'course:success',
+    COURSE_FAILED: 'course:failed',
+
+    // 系统事件
+    SYSTEM_STARTED: 'system:started',
+    SYSTEM_STOPPED: 'system:stopped',
+    SYSTEM_ERROR: 'system:error',
+    SYSTEM_RESET: 'system:reset'
+};
+```
 
 ---
 
-## 🔮 未来技术展望
+## 💾 数据持久化技术
 
-### 可能采用的现代特性:
+### 存储抽象层
 
-1. **Private Class Fields** (ES2022)
+```javascript
+// 存储接口定义
+class IStorageProvider {
+    async get(key) {
+        throw new Error('Method must be implemented');
+    }
+
+    async set(key, value) {
+        throw new Error('Method must be implemented');
+    }
+
+    async remove(key) {
+        throw new Error('Method must be implemented');
+    }
+
+    async clear() {
+        throw new Error('Method must be implemented');
+    }
+
+    async keys() {
+        throw new Error('Method must be implemented');
+    }
+}
+
+// GM存储提供者（油猴环境）
+class GMStorageProvider extends IStorageProvider {
+    async get(key, defaultValue = null) {
+        try {
+            const value = GM_getValue(key, defaultValue);
+            return typeof value === 'string' ? JSON.parse(value) : value;
+        } catch (error) {
+            console.error(`GM存储读取失败 [${key}]:`, error);
+            return defaultValue;
+        }
+    }
+
+    async set(key, value) {
+        try {
+            const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+            GM_setValue(key, serialized);
+            return true;
+        } catch (error) {
+            console.error(`GM存储写入失败 [${key}]:`, error);
+            return false;
+        }
+    }
+
+    async remove(key) {
+        try {
+            GM_deleteValue(key);
+            return true;
+        } catch (error) {
+            console.error(`GM存储删除失败 [${key}]:`, error);
+            return false;
+        }
+    }
+
+    async clear() {
+        try {
+            const keys = GM_listValues();
+            keys.forEach(key => GM_deleteValue(key));
+            return true;
+        } catch (error) {
+            console.error('GM存储清空失败:', error);
+            return false;
+        }
+    }
+
+    async keys() {
+        try {
+            return GM_listValues();
+        } catch (error) {
+            console.error('GM存储获取键列表失败:', error);
+            return [];
+        }
+    }
+}
+
+// LocalStorage提供者（浏览器环境）
+class LocalStorageProvider extends IStorageProvider {
+    async get(key, defaultValue = null) {
+        try {
+            const value = localStorage.getItem(key);
+            if (value === null) return defaultValue;
+            return JSON.parse(value);
+        } catch (error) {
+            console.error(`LocalStorage读取失败 [${key}]:`, error);
+            return defaultValue;
+        }
+    }
+
+    async set(key, value) {
+        try {
+            const serialized = JSON.stringify(value);
+            localStorage.setItem(key, serialized);
+            return true;
+        } catch (error) {
+            console.error(`LocalStorage写入失败 [${key}]:`, error);
+            return false;
+        }
+    }
+
+    async remove(key) {
+        try {
+            localStorage.removeItem(key);
+            return true;
+        } catch (error) {
+            console.error(`LocalStorage删除失败 [${key}]:`, error);
+            return false;
+        }
+    }
+
+    async clear() {
+        try {
+            localStorage.clear();
+            return true;
+        } catch (error) {
+            console.error('LocalStorage清空失败:', error);
+            return false;
+        }
+    }
+
+    async keys() {
+        try {
+            return Object.keys(localStorage);
+        } catch (error) {
+            console.error('LocalStorage获取键列表失败:', error);
+            return [];
+        }
+    }
+}
+
+// 存储工厂
+class StorageFactory {
+    static create() {
+        if (typeof GM_setValue !== 'undefined' && typeof GM_getValue !== 'undefined') {
+            console.log('使用GM存储提供者');
+            return new GMStorageProvider();
+        } else {
+            console.log('使用LocalStorage提供者');
+            return new LocalStorageProvider();
+        }
+    }
+}
+
+// 数据仓库模式
+class DataRepository {
+    constructor() {
+        this.storage = StorageFactory.create();
+        this.cache = new Map();
+        this.cacheTimeout = 5 * 60 * 1000; // 5分钟缓存
+    }
+
+    async getData(key) {
+        // 检查缓存
+        if (this.cache.has(key)) {
+            const cached = this.cache.get(key);
+            if (Date.now() - cached.timestamp < this.cacheTimeout) {
+                return cached.data;
+            }
+        }
+
+        // 从存储获取
+        const data = await this.storage.get(key);
+
+        // 更新缓存
+        this.cache.set(key, {
+            data,
+            timestamp: Date.now()
+        });
+
+        return data;
+    }
+
+    async setData(key, data) {
+        const success = await this.storage.set(key, data);
+
+        if (success) {
+            // 更新缓存
+            this.cache.set(key, {
+                data,
+                timestamp: Date.now()
+            });
+        }
+
+        return success;
+    }
+
+    async invalidateCache(key = null) {
+        if (key) {
+            this.cache.delete(key);
+        } else {
+            this.cache.clear();
+        }
+    }
+}
+```
+
+---
+
+## 📊 V1.0.4 语言特性统计
+
+### 抢课助手项目使用的ES6+特性:
+
+| 特性类别 | 具体特性 | V1.0.4 使用频率 | 代码示例 |
+|---------|---------|------------------|----------|
+| **变量声明** | const/let | ⭐⭐⭐⭐⭐ | `const CONFIG = {}` |
+| **函数** | 箭头函数 | ⭐⭐⭐⭐⭐ | `() => console.log('')` |
+| **字符串** | 模板字面量 | ⭐⭐⭐⭐⭐ | `` `${courseId}` `` |
+| **对象** | 解构赋值 | ⭐⭐⭐⭐⭐ | `const { id, name } = course` |
+| **数组** | map/filter/forEach | ⭐⭐⭐⭐⭐ | `courses.map(c => c.id)` |
+| **异步** | Promise/async-await | ⭐⭐⭐⭐⭐ | `await fetch(url)` |
+| **模块** | import/export | ⭐⭐⭐⭐⭐ | `import { CONFIG } from './config'` |
+| **类** | class/extends | ⭐⭐⭐⭐ | `class LocalDataManager {}` |
+| **事件** | CustomEvent | ⭐⭐⭐⭐ (新增) | `new CustomEvent('event', {detail})` |
+| **存储** | GM_setValue/GM_getValue | ⭐⭐⭐ (新增) | `GM_setValue('key', value)` |
+
+### V1.0.4 浏览器API使用统计:
+
+| API类别 | 具体API | V1.0.4 使用场景 | 代码示例 |
+|---------|---------|-----------------|----------|
+| **网络请求** | fetch API | 课程注册请求 | `fetch(url, options)` |
+| **事件处理** | CustomEvent API | 事件驱动通信 | `new CustomEvent('name', {detail})` |
+| **数据存储** | GM_setValue/GM_getValue | 本地数据持久化 | `GM_setValue('key', JSON.stringify(data))` |
+| **DOM操作** | createElement | 创建UI元素 | `document.createElement('div')` |
+| **事件监听** | addEventListener | 用户交互 | `button.addEventListener('click')` |
+| **定时器** | setInterval/setTimeout | 抢课轮询 | `setInterval(() => {}, 500)` |
+| **控制台** | console.log | 调试输出 | `console.log('抢课开始')` |
+
+---
+
+## 🔮 V1.0.4 未来技术展望
+
+### 计划采用的现代特性:
+
+1. **Optional Chaining** (ES2020)
+   ```javascript
+   const result = response?.data?.courses?.[0];
+   const courseName = courseDetails?.find(c => c.id === courseId)?.name;
+   ```
+
+2. **Nullish Coalescing** (ES2020)
+   ```javascript
+   const timeout = options.timeout ?? 5000;
+   const courseName = course.name ?? '未命名课程';
+   ```
+
+3. **Private Class Fields** (ES2022)
    ```javascript
    class CourseManager {
        #courses = [];  // 私有字段
+       #storage = null;
+
+       #validateCourseId(courseId) {
+           return /^\d{8,12}$/.test(courseId);
+       }
    }
-   ```
-
-2. **Optional Chaining** (ES2020)
-   ```javascript
-   const result = response?.data?.courses?.[0];
-   ```
-
-3. **Nullish Coalescing** (ES2020)
-   ```javascript
-   const timeout = options.timeout ?? 5000;
    ```
 
 4. **Dynamic Import** (ES2020)
    ```javascript
-   const module = await import('./module.js');
+   // 动态加载模块
+   const module = await import('./advanced-features.js');
+   ```
+
+5. **WeakRef and FinalizationRegistry** (ES2021)
+   ```javascript
+   // 弱引用管理
+   const courseCache = new WeakRef(courseManager);
    ```
 
 ---
 
 *文档持续更新中...*
+*最后更新时间: 2025年12月3日 (V1.0.4)*
