@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.4
+ * @version 1.0.5
  * @description 专为中南民族大学学生设计的自动化课程注册助手核心逻辑模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -380,7 +380,7 @@ class CourseRegistrationManager {
         const trimmedNewId = newCourseId.trim();
 
         // 验证格式
-        if (trimmedNewId.length < 8 || trimmedNewId.length > 12 || !/^\d+$/.test(trimmedNewId)) {
+        if (trimmedNewId.length < 6 || trimmedNewId.length > 20 || !/^[A-Za-z0-9]+$/.test(trimmedNewId)) {
             console.warn(`${CONFIG.LOG.LOG_PREFIX} 新课程ID格式无效: ${trimmedNewId}`);
             return false;
         }

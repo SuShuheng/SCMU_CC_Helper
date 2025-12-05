@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.4
+ * @version 1.0.5
  * @description 专为中南民族大学学生设计的自动化课程注册助手UI控制模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -91,7 +91,10 @@ class UIController {
                 if (this.panel) {
                     this.panel.style.display = 'none'; // 初始隐藏，防止意外显示
                     this.panel.id = 'course-registration-panel';
-                    this.makeDraggable(this.panel, this.panel);
+                    // 获取标题栏作为拖拽手柄
+                    const titleBar = this.panel.querySelector('.main-title-bar');
+                    // 使面板可拖拽，只允许通过标题栏拖拽
+                    this.makeDraggable(this.panel, titleBar);
                     document.body.appendChild(this.panel);
                     console.log(`${CONFIG.LOG.LOG_PREFIX} UI容器创建成功`);
                 } else {
@@ -143,7 +146,10 @@ class UIController {
                         if (this.panel) {
                             this.panel.style.display = 'none'; // 初始隐藏，防止意外显示
                             this.panel.id = 'course-registration-panel';
-                            this.makeDraggable(this.panel, this.panel);
+                            // 获取标题栏作为拖拽手柄
+                            const titleBar = this.panel.querySelector('.main-title-bar');
+                            // 使面板可拖拽，只允许通过标题栏拖拽
+                            this.makeDraggable(this.panel, titleBar);
                             document.body.appendChild(this.panel);
                             console.log(`${CONFIG.LOG.LOG_PREFIX} 强制创建UI容器成功`);
                         } else {
@@ -426,8 +432,10 @@ class UIController {
             this.createControlPanel();
             // 设置面板ID
             this.panel.id = 'course-registration-panel';
-            // 使面板可拖拽
-            this.makeDraggable(this.panel);
+            // 获取标题栏作为拖拽手柄
+            const titleBar = this.panel.querySelector('.main-title-bar');
+            // 使面板可拖拽，只允许通过标题栏拖拽
+            this.makeDraggable(this.panel, titleBar);
             // CRITICAL: Add panel to DOM
             document.body.appendChild(this.panel);
         }
@@ -589,20 +597,21 @@ class UIController {
 
         const trimmedId = courseId.trim();
 
-        // 检查长度（课程ID通常为8-12位数字）
-        if (trimmedId.length < 8 || trimmedId.length > 12) {
+        // 检查长度（课程ID支持6-20位字母和数字组合）
+        if (trimmedId.length < 6 || trimmedId.length > 20) {
             return false;
         }
 
-        // 检查是否为纯数字（根据实际情况调整）
-        return /^\d+$/.test(trimmedId);
+        // 检查是否为字母和数字组合（支持大小写字母和数字）
+        return /^[A-Za-z0-9]+$/.test(trimmedId);
     }
 
     /**
      * 使元素可拖拽
      * @param {HTMLElement} element - 要拖拽的元素
+     * @param {HTMLElement} handle - 可选的拖拽手柄元素，如果未提供则使用CSS类名检查
      */
-    makeDraggable(element) {
+    makeDraggable(element, handle = null) {
         let isDragging = false;
         let currentX;
         let currentY;
@@ -627,8 +636,18 @@ class UIController {
         }
 
         function dragStart(e) {
-            // 防止在标题栏以外区域拖拽
-            if (e.target.closest('.status-title-bar') || e.target.closest('.main-title-bar')) {
+            // 优化的拖拽权限检查：优先使用手柄，回退到CSS类名检查
+            let canDrag = false;
+
+            if (handle) {
+                // 使用指定的拖拽手柄
+                canDrag = (e.target === handle || handle.contains(e.target));
+            } else {
+                // 回退到CSS类名检查方式
+                canDrag = e.target.closest('.status-title-bar') || e.target.closest('.main-title-bar');
+            }
+
+            if (canDrag) {
                 if (e.type === "touchstart") {
                     initialX = e.touches[0].clientX - xOffset;
                     initialY = e.touches[0].clientY - yOffset;
@@ -1138,16 +1157,6 @@ class UIController {
             min-height: 300px;
         `;
 
-        // 添加拖拽功能
-        this.makeDraggable(statusModal);
-
-        // 确保拖拽时不会意外关闭
-        statusModal.addEventListener('mousedown', (e) => {
-            if (e.target === statusModal || statusModal.contains(e.target)) {
-                e.stopPropagation();
-            }
-        });
-
         // 创建标题栏
         const titleBar = document.createElement('div');
         titleBar.className = 'status-title-bar';
@@ -1202,6 +1211,17 @@ class UIController {
 
         statusModal.appendChild(titleBar);
         statusModal.appendChild(statusContent);
+
+        // 添加拖拽功能，只允许通过标题栏拖拽
+        this.makeDraggable(statusModal, titleBar);
+
+        // 确保拖拽时不会意外关闭
+        statusModal.addEventListener('mousedown', (e) => {
+            if (e.target === statusModal || statusModal.contains(e.target)) {
+                e.stopPropagation();
+            }
+        });
+
         document.body.appendChild(statusModal);
 
         // 设置statusModal引用和ID

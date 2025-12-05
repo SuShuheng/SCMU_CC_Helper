@@ -3,7 +3,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.4
+ * @version 1.0.5
  */
 
 import { CONFIG } from './config.js';

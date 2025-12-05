@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.4
+ * @version 1.0.5
  * @description 专为中南民族大学学生设计的自动化课程注册助手配置模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -45,6 +45,23 @@ export const GRAB_CONFIG = {
     MAX_RETRY_COUNT: 3,
     // 课程满员检测关键词
     COURSE_FULL_KEYWORDS: ['课程已满', '已选满']
+};
+
+// 课程ID验证配置
+export const COURSE_ID_CONFIG = {
+    // 最小长度
+    MIN_LENGTH: 6,
+    // 最大长度
+    MAX_LENGTH: 20,
+    // 验证正则表达式（支持大小写字母和数字）
+    VALIDATION_REGEX: /^[A-Za-z0-9]+$/,
+    // 错误提示信息
+    ERROR_MESSAGES: {
+        EMPTY: '课程ID不能为空',
+        TOO_SHORT: `课程ID长度不能少于${6}位`,
+        TOO_LONG: `课程ID长度不能超过${20}位`,
+        INVALID_FORMAT: '课程ID只能包含字母和数字'
+    }
 };
 
 // 用户界面配置

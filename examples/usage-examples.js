@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 2.0.0
+ * @version 1.0.5
  * @description 专为中南民族大学学生设计的自动化课程注册助手使用示例模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -33,8 +33,8 @@ async function basicGrabExample() {
     console.log('=== 基本抢课示例 ===');
 
     // 1. 添加要抢的课程
-    courseManager.addCourse('2024010101');  // 高等数学A
-    courseManager.addCourse('2024010102');  // 大学英语B
+    courseManager.addCourse('MATH101');     // 高等数学A
+    courseManager.addCourse('ENG202');      // 大学英语B
 
     // 2. 开始抢课
     await courseManager.initialize();
@@ -48,7 +48,7 @@ async function safeGrabExample() {
 
     try {
         // 添加课程
-        const courseIds = ['2024010101', '2024010102', '2024010103'];
+        const courseIds = ['MATH101', 'ENG202', 'CS301'];
 
         courseIds.forEach(id => {
             courseManager.addCourse(id);
@@ -85,7 +85,7 @@ async function customConfigExample() {
     CONFIG.GRAB.COURSE_FULL_KEYWORDS.push('名额已满', '选课人数已满');
 
     // 使用新配置开始抢课
-    courseManager.addCourse('2024010101');
+    courseManager.addCourse('MATH101');
     await courseManager.initialize();
 
     console.log('使用自定义配置开始抢课');
@@ -133,11 +133,11 @@ async function batchGrabExample() {
 
     // 定义要抢的课程列表
     const courses = [
-        { id: '2024010101', name: '高等数学A', priority: 1 },
-        { id: '2024010102', name: '大学英语B', priority: 2 },
-        { id: '2024010103', name: '计算机基础', priority: 3 },
-        { id: '2024010104', name: '体育课', priority: 4 },
-        { id: '2024010105', name: '思想政治', priority: 5 }
+        { id: 'MATH101', name: '高等数学A', priority: 1 },
+        { id: 'ENG202', name: '大学英语B', priority: 2 },
+        { id: 'CS301', name: '计算机基础', priority: 3 },
+        { id: 'PE404', name: '体育课', priority: 4 },
+        { id: 'POL505', name: '思想政治', priority: 5 }
     ];
 
     // 按优先级排序
@@ -246,7 +246,7 @@ async function smartRetryExample() {
         try {
             console.log(`第 ${attempt} 次尝试抢课`);
 
-            courseManager.addCourse('2024010101');
+            courseManager.addCourse('MATH101');
             await courseManager.initialize();
 
             // 抢课成功，退出循环
@@ -295,7 +295,7 @@ async function conditionalGrabExample() {
 
     // 满足所有条件，开始抢课
     console.log('条件检查通过，开始抢课');
-    courseManager.addCourse('2024010101');
+    courseManager.addCourse('MATH101');
     await courseManager.initialize();
 }
 
@@ -312,9 +312,9 @@ function openingDayGrabScenario() {
 
     // 准备抢课列表
     const priorityCourses = [
-        '2024010101',  // 最想上的课
-        '2024010102',  // 备选1
-        '2024010103'   // 备选2
+        'MATH101',    // 最想上的课
+        'ENG202',     // 备选1
+        'CS301'       // 备选2
     ];
 
     priorityCourses.forEach(id => courseManager.addCourse(id));
@@ -336,7 +336,7 @@ function makeUpGrabScenario() {
     CONFIG.GRAB.POLLING_INTERVAL = 2000;  // 2秒
 
     // 添加想要的课程
-    courseManager.addCourse('2024010150');  // 少量名额的热门课程
+    courseManager.addCourse('HOT150');  // 少量名额的热门课程
 
     courseManager.initialize();
 }
@@ -347,8 +347,8 @@ function experimentalClassGrabScenario() {
 
     // 优先抢实验班
     const coursesWithExperimental = [
-        { id: '2024010101', preferExperimental: true },
-        { id: '2024010102', preferExperimental: false }
+        { id: 'MATH101', preferExperimental: true },
+        { id: 'ENG202', preferExperimental: false }
     ];
 
     coursesWithExperimental.forEach(course => {
@@ -374,7 +374,7 @@ async function testGrabLogic() {
     CONFIG.LOG.ENABLE_VERBOSE_LOGGING = true;
 
     // 使用测试课程ID（不会实际抢课）
-    const testCourseId = 'TEST_COURSE_001';
+    const testCourseId = 'TEST101';
 
     console.log('测试开始...');
     courseManager.addCourse(testCourseId);

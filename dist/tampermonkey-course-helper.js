@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SCMU自动选课助手
 // @namespace    https://github.com/sushuheng/SCMU_CC_Helper
-// @version      1.0.4
+// @version      1.0.5
 // @description  专为中南民族大学学生设计的自动化课程注册助手
 // @author       SuShuHeng
 // @license      APACHE 2.0
@@ -19,7 +19,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.4
+ * @version 1.0.5
  * @description 专为中南民族大学学生设计的自动化课程注册助手
  *
  * Copyright (c) 2025 SuShuHeng
@@ -751,7 +751,7 @@
             const trimmedNewId = newCourseId.trim();
 
             // 验证格式
-            if (trimmedNewId.length < 8 || trimmedNewId.length > 12 || !/^\d+$/.test(trimmedNewId)) {
+            if (trimmedNewId.length < 6 || trimmedNewId.length > 20 || !/^[A-Za-z0-9]+$/.test(trimmedNewId)) {
                 console.warn(`${CONFIG.LOG.LOG_PREFIX} 新课程ID格式无效: ${trimmedNewId}`);
                 return false;
             }
@@ -975,7 +975,10 @@
                     if (this.panel) {
                         this.panel.style.display = 'none'; // 初始隐藏，防止意外显示
                         this.panel.id = 'course-registration-panel';
-                        this.makeDraggable(this.panel, this.panel);
+                        // 获取标题栏作为拖拽手柄
+                        const titleBar = this.panel.querySelector('.main-title-bar');
+                        // 使面板可拖拽，只允许通过标题栏拖拽
+                        this.makeDraggable(this.panel, titleBar);
                         document.body.appendChild(this.panel);
                         console.log(`${CONFIG.LOG.LOG_PREFIX} UI容器创建成功`);
                     } else {
@@ -1088,7 +1091,10 @@
                             if (this.panel) {
                                 this.panel.style.display = 'none'; // 初始隐藏，防止意外显示
                                 this.panel.id = 'course-registration-panel';
-                                this.makeDraggable(this.panel, this.panel);
+                                // 获取标题栏作为拖拽手柄
+                                const titleBar = this.panel.querySelector('.main-title-bar');
+                                // 使面板可拖拽，只允许通过标题栏拖拽
+                                this.makeDraggable(this.panel, titleBar);
                                 document.body.appendChild(this.panel);
                                 console.log(`${CONFIG.LOG.LOG_PREFIX} 强制创建UI容器成功`);
                             } else {
@@ -1310,8 +1316,10 @@
                 this.createControlPanel();
                 // 设置面板ID
                 this.panel.id = 'course-registration-panel';
-                // 使面板可拖拽（使用整个面板作为拖拽手柄）
-                this.makeDraggable(this.panel, this.panel);
+                // 获取标题栏作为拖拽手柄
+                const titleBar = this.panel.querySelector('.main-title-bar');
+                // 使面板可拖拽，只允许通过标题栏拖拽
+                this.makeDraggable(this.panel, titleBar);
                 // CRITICAL: Add panel to DOM
                 document.body.appendChild(this.panel);
             }
@@ -1456,11 +1464,11 @@
 
             const trimmedId = courseId.trim();
 
-            if (trimmedId.length < 8 || trimmedId.length > 12) {
+            if (trimmedId.length < 6 || trimmedId.length > 20) {
                 return false;
             }
 
-            return /^\d+$/.test(trimmedId);
+            return /^[A-Za-z0-9]+$/.test(trimmedId);
         }
 
     
@@ -1769,6 +1777,7 @@
 
                 // 创建标题栏（可拖拽）
                 const titleBar = document.createElement('div');
+                titleBar.className = 'status-title-bar';
                 titleBar.style.cssText = `
                     display: flex;
                     justify-content: space-between;
@@ -1776,7 +1785,7 @@
                     margin-bottom: 15px;
                     padding-bottom: 10px;
                     border-bottom: 1px solid #dee2e6;
-                    cursor: move;
+                    cursor: grab;
                 `;
 
                 const title = document.createElement('h4');
@@ -2073,14 +2082,24 @@
         }
 
         // 拖拽功能实现（支持触控设备，修复transform转换问题）
-        makeDraggable(element, handle) {
+        makeDraggable(element, handle = null) {
             let isDragging = false;
             let startX, startY;
 
             function dragStart(e) {
                 try {
-                    // 检查拖拽权限
-                    if (handle && e.target !== handle && !handle.contains(e.target)) {
+                    // 优化的拖拽权限检查：优先使用手柄，回退到CSS类名检查
+                    let canDrag = false;
+
+                    if (handle) {
+                        // 使用指定的拖拽手柄
+                        canDrag = (e.target === handle || handle.contains(e.target));
+                    } else {
+                        // 回退到CSS类名检查方式
+                        canDrag = e.target.closest('.status-title-bar') || e.target.closest('.main-title-bar');
+                    }
+
+                    if (!canDrag) {
                         return;
                     }
 
@@ -2629,12 +2648,14 @@
 
             // 创建标题栏容器
             const titleBar = document.createElement('div');
+            titleBar.className = 'main-title-bar';
             titleBar.style.cssText = `
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
                 margin: 0 0 15px 0;
                 position: relative;
+                cursor: grab;
             `;
 
             // 标题文字
@@ -3442,7 +3463,7 @@
 
             // 显示版权信息和启动消息
             console.log(`
-🎓 中南民族大学自动选课助手 v1.0.4
+🎓 中南民族大学自动选课助手 v1.0.5
 👤 作者: SuShuHeng (https://github.com/sushuheng)
 📜 许可证: APACHE 2.0
 ⚠️  免责声明: 本项目仅用于学习目的，请遵守学校相关规定

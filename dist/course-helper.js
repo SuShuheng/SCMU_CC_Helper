@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.4
+ * @version 1.0.5
  * @description 专为中南民族大学学生设计的自动化课程注册助手
  *
  * Copyright (c) 2025 SuShuHeng
@@ -544,7 +544,7 @@
 
             const trimmedNewId = newCourseId.trim();
 
-            if (trimmedNewId.length < 8 || trimmedNewId.length > 12 || !/^\d+$/.test(trimmedNewId)) {
+            if (trimmedNewId.length < 6 || trimmedNewId.length > 20 || !/^[A-Za-z0-9]+$/.test(trimmedNewId)) {
                 console.warn(`${CONFIG.LOG.LOG_PREFIX} 新课程ID格式无效: ${trimmedNewId}`);
                 return false;
             }
@@ -735,7 +735,10 @@
                     if (this.panel) {
                         this.panel.style.display = 'none';
                         this.panel.id = 'course-registration-panel';
-                        this.makeDraggable(this.panel, this.panel);
+                        // 获取标题栏作为拖拽手柄
+                        const titleBar = this.panel.querySelector('.main-title-bar');
+                        // 使面板可拖拽，只允许通过标题栏拖拽
+                        this.makeDraggable(this.panel, titleBar);
                         document.body.appendChild(this.panel);
                     }
                 }
@@ -758,7 +761,10 @@
                             if (this.panel) {
                                 this.panel.style.display = 'none';
                                 this.panel.id = 'course-registration-panel';
-                                this.makeDraggable(this.panel, this.panel);
+                                // 获取标题栏作为拖拽手柄
+                                const titleBar = this.panel.querySelector('.main-title-bar');
+                                // 使面板可拖拽，只允许通过标题栏拖拽
+                                this.makeDraggable(this.panel, titleBar);
                                 document.body.appendChild(this.panel);
                             }
                         } else {
@@ -936,7 +942,10 @@
             if (!this.panel) {
                 this.createControlPanel();
                 this.panel.id = 'course-registration-panel';
-                this.makeDraggable(this.panel);
+                // 获取标题栏作为拖拽手柄
+                const titleBar = this.panel.querySelector('.main-title-bar');
+                // 使面板可拖拽，只允许通过标题栏拖拽
+                this.makeDraggable(this.panel, titleBar);
                 document.body.appendChild(this.panel);
             }
             this.panel.style.display = 'block';
@@ -1067,14 +1076,14 @@
 
             const trimmedId = courseId.trim();
 
-            if (trimmedId.length < 8 || trimmedId.length > 12) {
+            if (trimmedId.length < 6 || trimmedId.length > 20) {
                 return false;
             }
 
-            return /^\d+$/.test(trimmedId);
+            return /^[A-Za-z0-9]+$/.test(trimmedId);
         }
 
-        makeDraggable(element) {
+        makeDraggable(element, handle = null) {
             let isDragging = false;
             let currentX;
             let currentY;
@@ -1096,7 +1105,18 @@
             }
 
             function dragStart(e) {
-                if (e.target.closest('.status-title-bar') || e.target.closest('.main-title-bar')) {
+                // 优化的拖拽权限检查：优先使用手柄，回退到CSS类名检查
+                let canDrag = false;
+
+                if (handle) {
+                    // 使用指定的拖拽手柄
+                    canDrag = (e.target === handle || handle.contains(e.target));
+                } else {
+                    // 回退到CSS类名检查方式
+                    canDrag = e.target.closest('.status-title-bar') || e.target.closest('.main-title-bar');
+                }
+
+                if (canDrag) {
                     if (e.type === "touchstart") {
                         initialX = e.touches[0].clientX - xOffset;
                         initialY = e.touches[0].clientY - yOffset;
@@ -1581,14 +1601,6 @@
                     min-height: 300px;
                 `;
 
-                this.makeDraggable(statusModal);
-
-                statusModal.addEventListener('mousedown', (e) => {
-                    if (e.target === statusModal || statusModal.contains(e.target)) {
-                        e.stopPropagation();
-                    }
-                });
-
                 const titleBar = document.createElement('div');
                 titleBar.className = 'status-title-bar';
                 titleBar.style.cssText = `
@@ -1641,6 +1653,16 @@
 
                 statusModal.appendChild(titleBar);
                 statusModal.appendChild(statusContent);
+
+                // 添加拖拽功能，只允许通过标题栏拖拽
+                this.makeDraggable(statusModal, titleBar);
+
+                statusModal.addEventListener('mousedown', (e) => {
+                    if (e.target === statusModal || statusModal.contains(e.target)) {
+                        e.stopPropagation();
+                    }
+                });
+
                 document.body.appendChild(statusModal);
 
                 this.statusModal = statusModal;
@@ -2457,7 +2479,7 @@
     // 初始化UI
     uiController.initialize();
 
-    console.log(`${CONFIG.LOG.LOG_PREFIX} 中南民族大学自动选课助手 v1.0.4 已启动`);
+    console.log(`${CONFIG.LOG.LOG_PREFIX} 中南民族大学自动选课助手 v1.0.5 已启动`);
     console.log(`${CONFIG.LOG.LOG_PREFIX} 使用说明：`);
     console.log(`${CONFIG.LOG.LOG_PREFIX} 1. 点击右下角"抢课"按钮打开控制面板`);
     console.log(`${CONFIG.LOG.LOG_PREFIX} 2. 输入课程ID和可选的课程名称`);
