@@ -5,7 +5,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 2.0.0
+ * @version V1.1.0
  * @description 专为中南民族大学学生设计的自动化课程注册助手，支持所有选课类型
  *
  * Copyright (c) 2025 SuShuHeng
@@ -196,6 +196,335 @@
         }
     };
 
+    // ==================== 本地数据管理器 ====================
+    class LocalDataManager {
+        constructor() {
+            this.STORAGE_KEYS = {
+                COURSES: 'scmu_courses',
+                EXPERIMENTAL_CLASSES: 'scmu_experimental_classes',
+                METADATA: 'scmu_metadata'
+            };
+            this.DATA_VERSION = 'V1.1.0';
+            this.storageAvailable = this.checkStorageAvailability();
+            this.DEFAULT_COURSE_NAME = '请输入名称(可选)';
+        }
+
+        checkStorageAvailability() {
+            try {
+                return typeof localStorage !== 'undefined';
+            } catch (e) {
+                console.error(`[选课助手] 存储功能检测失败:`, e);
+                return false;
+            }
+        }
+
+        // 适配localStorage的GM_setValue等效方法
+        setValue(key, value) {
+            try {
+                if (this.storageAvailable) {
+                    localStorage.setItem(key, value);
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.error(`[选课助手] localStorage写入失败:`, e);
+                return false;
+            }
+        }
+
+        // 适配localStorage的GM_getValue等效方法
+        getValue(key, defaultValue = '') {
+            try {
+                if (this.storageAvailable) {
+                    const value = localStorage.getItem(key);
+                    return value !== null ? value : defaultValue;
+                }
+                return defaultValue;
+            } catch (e) {
+                console.error(`[选课助手] localStorage读取失败:`, e);
+                return defaultValue;
+            }
+        }
+
+        saveCoursesData(courses, experimentalClasses, statusMap, courseTypeMap = {}, courseNameMap = {}) {
+            if (!this.storageAvailable) {
+                console.warn(`[选课助手] 存储功能不可用，数据无法保存`);
+                return false;
+            }
+
+            try {
+                // 数据验证
+                if (!Array.isArray(courses)) {
+                    console.error(`[选课助手] 课程数据格式错误，期望数组格式`);
+                    return false;
+                }
+
+                // 过滤无效课程ID
+                const validCourses = courses.filter(courseId =>
+                    courseId && typeof courseId === 'string' && courseId.trim().length > 0
+                );
+
+                if (validCourses.length === 0) {
+                    console.log(`[选课助手] 没有有效的课程数据需要保存`);
+                    return true;
+                }
+
+                // 获取现有数据以保留课程名称等信息
+                const existingDataStr = this.getValue(this.STORAGE_KEYS.COURSES, '[]');
+                let existingCourses = [];
+                try {
+                    existingCourses = JSON.parse(existingDataStr);
+                } catch (e) {
+                    console.warn(`[选课助手] 读取现有课程数据失败，将使用默认数据`);
+                }
+
+                // 合并数据，保留已存在的课程信息、课程类型和课程名称
+                const mergedCourses = validCourses.map(courseId => {
+                    const existing = existingCourses.find(c => c.id === courseId);
+                    const courseName = courseNameMap[courseId] || existing?.name || this.DEFAULT_COURSE_NAME;
+                    const courseType = courseTypeMap[courseId] || existing?.courseType || CONFIG.GRAB.DEFAULT_COURSE_TYPE;
+
+                    console.log(`[选课助手] 合并课程数据: ${courseId}, 名称: "${courseName}", 类型: ${courseType}`);
+
+                    return {
+                        id: courseId,
+                        name: courseName,
+                        courseType: courseType,
+                        addedTime: existing?.addedTime || Date.now(),
+                        nameUpdatedTime: courseNameMap[courseId] ? Date.now() : existing?.nameUpdatedTime,
+                        status: {
+                            success: statusMap[courseId]?.success || existing?.status?.success || false
+                        }
+                    };
+                });
+
+                const storageData = {
+                    courses: mergedCourses,
+                    experimentalClasses: experimentalClasses || {},
+                    metadata: {
+                        lastSaved: Date.now(),
+                        version: this.DATA_VERSION,
+                        sessionCount: this.getSessionCount() + 1,
+                        coursesCount: mergedCourses.length
+                    }
+                };
+
+                // 保存数据
+                this.setValue(this.STORAGE_KEYS.COURSES, JSON.stringify(storageData.courses));
+                this.setValue(this.STORAGE_KEYS.EXPERIMENTAL_CLASSES, JSON.stringify(storageData.experimentalClasses));
+                this.setValue(this.STORAGE_KEYS.METADATA, JSON.stringify(storageData.metadata));
+
+                console.log(`[选课助手] 数据保存成功，共${storageData.courses.length}门课程，会话次数:${storageData.metadata.sessionCount}`);
+                return true;
+            } catch (error) {
+                console.error(`[选课助手] 保存数据失败:`, error);
+                return false;
+            }
+        }
+
+        loadCoursesData() {
+            if (!this.storageAvailable) {
+                console.warn(`[选课助手] 存储功能不可用，无法加载数据`);
+                return {
+                    courses: [],
+                    experimentalClasses: {},
+                    courseDetails: {},
+                    statusMap: {}
+                };
+            }
+
+            try {
+                // 读取课程数据
+                const coursesDataStr = this.getValue(this.STORAGE_KEYS.COURSES, '[]');
+                const coursesData = JSON.parse(coursesDataStr);
+
+                if (!Array.isArray(coursesData)) {
+                    console.warn(`[选课助手] 课程数据格式异常，使用默认数据`);
+                    return {
+                        courses: [],
+                        experimentalClasses: {},
+                        courseDetails: {},
+                        statusMap: {}
+                    };
+                }
+
+                // 读取实验班数据
+                const experimentalClassesStr = this.getValue(this.STORAGE_KEYS.EXPERIMENTAL_CLASSES, '{}');
+                const experimentalClasses = JSON.parse(experimentalClassesStr);
+
+                // 提取课程ID、详细信息、状态映射
+                const courses = [];
+                const courseDetails = {};
+                const statusMap = {};
+
+                coursesData.forEach(course => {
+                    if (course && course.id) {
+                        courses.push(course.id);
+                        courseDetails[course.id] = {
+                            name: course.name || this.DEFAULT_COURSE_NAME,
+                            courseType: course.courseType || CONFIG.GRAB.DEFAULT_COURSE_TYPE,
+                            addedTime: course.addedTime || Date.now(),
+                            nameUpdatedTime: course.nameUpdatedTime,
+                            status: course.status || { success: false }
+                        };
+                        statusMap[course.id] = course.status || { success: false };
+                    }
+                });
+
+                console.log(`[选课助手] 数据加载成功，共${courses.length}门课程`);
+                console.log(`[选课助手] 课程详情:`, courseDetails);
+
+                return {
+                    courses,
+                    experimentalClasses,
+                    courseDetails,
+                    statusMap
+                };
+            } catch (error) {
+                console.error(`[选课助手] 加载数据失败:`, error);
+                return {
+                    courses: [],
+                    experimentalClasses: {},
+                    courseDetails: {},
+                    statusMap: {}
+                };
+            }
+        }
+
+        updateCourseName(courseId, courseName) {
+            if (!this.storageAvailable || !courseId) {
+                console.warn(`[选课助手] 存储功能不可用或课程ID为空，无法更新课程名称`);
+                return false;
+            }
+
+            try {
+                const existingDataStr = this.getValue(this.STORAGE_KEYS.COURSES, '[]');
+                let coursesData = JSON.parse(existingDataStr);
+
+                if (!Array.isArray(coursesData)) {
+                    coursesData = [];
+                }
+
+                // 查找并更新课程
+                const courseIndex = coursesData.findIndex(c => c.id === courseId);
+                if (courseIndex !== -1) {
+                    coursesData[courseIndex].name = courseName;
+                    coursesData[courseIndex].nameUpdatedTime = Date.now();
+                    console.log(`[选课助手] 课程名称已更新: ${courseId} -> "${courseName}"`);
+                } else {
+                    console.warn(`[选课助手] 课程 ${courseId} 不存在，无法更新名称`);
+                    return false;
+                }
+
+                // 保存更新后的数据
+                this.setValue(this.STORAGE_KEYS.COURSES, JSON.stringify(coursesData));
+                console.log(`[选课助手] 课程名称更新成功并已保存`);
+                return true;
+            } catch (error) {
+                console.error(`[选课助手] 更新课程名称失败:`, error);
+                return false;
+            }
+        }
+
+        removeCourse(courseId) {
+            if (!this.storageAvailable || !courseId) {
+                console.warn(`[选课助手] 存储功能不可用或课程ID为空，无法删除课程`);
+                return false;
+            }
+
+            try {
+                const existingDataStr = this.getValue(this.STORAGE_KEYS.COURSES, '[]');
+                let coursesData = JSON.parse(existingDataStr);
+
+                if (!Array.isArray(coursesData)) {
+                    coursesData = [];
+                }
+
+                const originalLength = coursesData.length;
+                coursesData = coursesData.filter(c => c.id !== courseId);
+
+                if (coursesData.length === originalLength) {
+                    console.warn(`[选课助手] 课程 ${courseId} 不存在，无需删除`);
+                    return true;
+                }
+
+                // 保存更新后的数据
+                this.setValue(this.STORAGE_KEYS.COURSES, JSON.stringify(coursesData));
+                console.log(`[选课助手] 课程 ${courseId} 已删除并保存`);
+                return true;
+            } catch (error) {
+                console.error(`[选课助手] 删除课程失败:`, error);
+                return false;
+            }
+        }
+
+        clearAllData() {
+            if (!this.storageAvailable) {
+                console.warn(`[选课助手] 存储功能不可用，无法清除数据`);
+                return false;
+            }
+
+            try {
+                this.setValue(this.STORAGE_KEYS.COURSES, '[]');
+                this.setValue(this.STORAGE_KEYS.EXPERIMENTAL_CLASSES, '{}');
+                this.setValue(this.STORAGE_KEYS.METADATA, '{}');
+                console.log(`[选课助手] 所有本地数据已清除`);
+                return true;
+            } catch (error) {
+                console.error(`[选课助手] 清除数据失败:`, error);
+                return false;
+            }
+        }
+
+        getSessionCount() {
+            if (!this.storageAvailable) {
+                return 0;
+            }
+
+            try {
+                const metadataStr = this.getValue(this.STORAGE_KEYS.METADATA, '{}');
+                const metadata = JSON.parse(metadataStr);
+                return metadata.sessionCount || 0;
+            } catch (error) {
+                return 0;
+            }
+        }
+
+        getStorageStats() {
+            if (!this.storageAvailable) {
+                return {
+                    available: false,
+                    coursesCount: 0,
+                    sessionCount: 0,
+                    lastSaved: null
+                };
+            }
+
+            try {
+                const coursesDataStr = this.getValue(this.STORAGE_KEYS.COURSES, '[]');
+                const coursesData = JSON.parse(coursesDataStr);
+                const metadataStr = this.getValue(this.STORAGE_KEYS.METADATA, '{}');
+                const metadata = JSON.parse(metadataStr);
+
+                return {
+                    available: true,
+                    coursesCount: Array.isArray(coursesData) ? coursesData.length : 0,
+                    sessionCount: metadata.sessionCount || 0,
+                    lastSaved: metadata.lastSaved || null,
+                    version: metadata.version || 'unknown'
+                };
+            } catch (error) {
+                console.error(`[选课助手] 获取存储统计信息失败:`, error);
+                return {
+                    available: true,
+                    coursesCount: 0,
+                    sessionCount: 0,
+                    lastSaved: null
+                };
+            }
+        }
+    }
+
     // ==================== 课程注册管理器 ====================
     class CourseRegistrationManager {
         constructor() {
@@ -203,7 +532,12 @@
             this.statusMap = {};
             this.glJxbidMap = {};
             this.courseTypeMap = {};
+            this.courseNameMap = {};
             this.intervalId = null;
+            this.localDataManager = new LocalDataManager();
+
+            // 加载保存的数据
+            this.loadSavedData();
 
             this.initEventListeners();
         }
@@ -248,7 +582,112 @@
                 const courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
                 console.log(`🎉 选课成功! 课程: ${courseId} [${courseTypeInfo.name}]`);
                 this.showNotification(`成功抢到课程: ${courseId} [${courseTypeInfo.name}]`, 'success');
+
+                // 添加成功记录（如果UI控制器存在）
+                if (window.uiController && window.uiController.addSuccessRecord) {
+                    window.uiController.addSuccessRecord(event.detail);
+                }
             });
+        }
+
+        /**
+         * 加载保存的数据
+         */
+        loadSavedData() {
+            try {
+                const savedData = this.localDataManager.loadCoursesData();
+
+                if (savedData.courses.length > 0) {
+                    this.courses = savedData.courses;
+                    this.courseTypeMap = {};
+                    this.courseNameMap = {};
+
+                    // 恢复课程类型和名称映射
+                    savedData.courses.forEach(courseId => {
+                        const detail = savedData.courseDetails[courseId];
+                        if (detail) {
+                            this.courseTypeMap[courseId] = detail.courseType;
+                            this.courseNameMap[courseId] = detail.name;
+                        } else {
+                            this.courseTypeMap[courseId] = CONFIG.GRAB.DEFAULT_COURSE_TYPE;
+                            this.courseNameMap[courseId] = this.localDataManager.DEFAULT_COURSE_NAME;
+                        }
+                        this.initCourseState(courseId, this.courseTypeMap[courseId]);
+                    });
+
+                    // 恢复状态映射
+                    this.statusMap = savedData.statusMap;
+
+                    console.log(`[选课助手] 成功加载${savedData.courses.length}门课程的数据`);
+                    console.log(`[选课助手] 课程类型映射:`, this.courseTypeMap);
+                    console.log(`[选课助手] 课程名称映射:`, this.courseNameMap);
+
+                    // 触发数据加载完成事件
+                    document.dispatchEvent(new CustomEvent('storage:dataLoaded', {
+                        detail: {
+                            courses: this.courses,
+                            courseDetails: savedData.courseDetails,
+                            statusMap: this.statusMap
+                        }
+                    }));
+                } else {
+                    console.log('[选课助手] 没有找到保存的课程数据');
+                }
+            } catch (error) {
+                console.error('[选课助手] 加载保存数据失败:', error);
+            }
+        }
+
+        /**
+         * 保存当前数据
+         */
+        saveCurrentData() {
+            try {
+                return this.localDataManager.saveCoursesData(
+                    this.courses,
+                    this.glJxbidMap,
+                    this.statusMap,
+                    this.courseTypeMap,
+                    this.courseNameMap
+                );
+            } catch (error) {
+                console.error('[选课助手] 保存当前数据失败:', error);
+                return false;
+            }
+        }
+
+        /**
+         * 更新课程名称
+         */
+        updateCourseName(courseId, courseName) {
+            if (!courseId) {
+                console.warn('[选课助手] 课程ID不能为空');
+                return false;
+            }
+
+            try {
+                // 更新内存中的映射
+                this.courseNameMap[courseId] = courseName;
+
+                // 更新存储
+                const success = this.localDataManager.updateCourseName(courseId, courseName);
+
+                if (success) {
+                    console.log(`[选课助手] 课程名称更新成功: ${courseId} -> "${courseName}"`);
+
+                    // 触发更新事件
+                    document.dispatchEvent(new CustomEvent('course:nameUpdated', {
+                        detail: { courseId, courseName }
+                    }));
+
+                    return true;
+                }
+
+                return false;
+            } catch (error) {
+                console.error('[选课助手] 更新课程名称失败:', error);
+                return false;
+            }
         }
 
         async fetchExperimentalClasses(jxbid) {
@@ -415,10 +854,14 @@
             // 添加课程
             this.courses.push(trimmedId);
             this.courseTypeMap[trimmedId] = courseType;
+            this.courseNameMap[trimmedId] = this.localDataManager.DEFAULT_COURSE_NAME;
             this.initCourseState(trimmedId, courseType);
 
             const courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
             console.log(`${CONFIG.LOG.LOG_PREFIX} 已添加课程: ${trimmedId} [${courseTypeInfo.name}]`);
+
+            // 保存数据
+            this.saveCurrentData();
 
             return true;
         }
@@ -430,6 +873,14 @@
                 delete this.statusMap[jxbid];
                 delete this.glJxbidMap[jxbid];
                 delete this.courseTypeMap[jxbid];
+                delete this.courseNameMap[jxbid];
+
+                // 从存储中删除课程
+                this.localDataManager.removeCourse(jxbid);
+
+                // 保存更新后的数据
+                this.saveCurrentData();
+
                 console.log(`${CONFIG.LOG.LOG_PREFIX} 已移除课程: ${jxbid}`);
                 return true;
             }
@@ -576,6 +1027,75 @@
         initialize() {
             this.createFloatingButton();
             this.setupEventListeners();
+            this.setupDataRecovery();
+        }
+
+        /**
+         * 设置数据恢复逻辑
+         */
+        setupDataRecovery() {
+            // 监听数据加载完成事件
+            document.addEventListener('storage:dataLoaded', (event) => {
+                const { courses, courseDetails, statusMap } = event.detail;
+                this.restoreUIFromStorage(courses, courseDetails, statusMap);
+            });
+
+            // 如果数据已经加载完成，立即恢复
+            if (this.courseManager.courses.length > 0) {
+                const courseDetails = {};
+                this.courseManager.courses.forEach(courseId => {
+                    courseDetails[courseId] = {
+                        name: this.courseManager.courseNameMap[courseId] || this.courseManager.localDataManager.DEFAULT_COURSE_NAME,
+                        courseType: this.courseManager.courseTypeMap[courseId] || CONFIG.GRAB.DEFAULT_COURSE_TYPE
+                    };
+                });
+                this.restoreUIFromStorage(this.courseManager.courses, courseDetails, this.courseManager.statusMap);
+            }
+        }
+
+        /**
+         * 从存储恢复UI状态
+         */
+        restoreUIFromStorage(courses, courseDetails, statusMap) {
+            if (!this.container || courses.length === 0) {
+                return;
+            }
+
+            // 清空现有的输入框
+            this.container.innerHTML = '';
+
+            // 为每个保存的课程创建输入框
+            courses.forEach((courseId, index) => {
+                const detail = courseDetails[courseId];
+                const courseType = detail?.courseType || CONFIG.GRAB.DEFAULT_COURSE_TYPE;
+                const courseName = detail?.name || this.courseManager.localDataManager.DEFAULT_COURSE_NAME;
+
+                // 创建课程输入框
+                const courseInput = this.createCourseInput(index, courseType);
+                this.container.appendChild(courseInput);
+
+                // 设置课程ID
+                const inputId = courseInput.querySelector('input[type="text"]:first-child');
+                inputId.value = courseId;
+                inputId.dataset.currentCourseId = courseId;
+
+                // 设置课程类型
+                const courseTypeSelector = courseInput.querySelector('select');
+                courseTypeSelector.value = courseType;
+
+                // 设置课程名称
+                const inputName = courseInput.querySelector('input[placeholder*="课程名称"]');
+                inputName.value = courseName;
+
+                console.log(`[选课助手] 恢复课程: ${courseId}, 类型: ${courseType}, 名称: "${courseName}"`);
+            });
+
+            // 如果没有课程，添加一个默认输入框
+            if (courses.length === 0) {
+                this.container.appendChild(this.createCourseInput(0, CONFIG.GRAB.DEFAULT_COURSE_TYPE));
+            }
+
+            console.log(`[选课助手] UI恢复完成，共${courses.length}门课程`);
         }
 
         createCourseTypeSelector(selectedType = CONFIG.GRAB.DEFAULT_COURSE_TYPE) {
@@ -691,6 +1211,52 @@
                 }
             });
 
+            // 课程名称处理逻辑
+            let courseNameSaveTimeout = null;
+
+            // 课程类型变更事件
+            courseTypeSelector.addEventListener('change', () => {
+                const currentCourseId = inputId.dataset.currentCourseId;
+                if (currentCourseId) {
+                    const selectedCourseType = courseTypeSelector.value;
+                    this.courseManager.courseTypeMap[currentCourseId] = selectedCourseType;
+                    this.courseManager.saveCurrentData();
+
+                    const courseTypeInfo = CONFIG.COURSE_TYPES[selectedCourseType];
+                    console.log(`[选课助手] 课程类型已更新: ${currentCourseId} -> ${courseTypeInfo.name}`);
+                }
+            });
+
+            // 课程名称输入事件
+            inputName.addEventListener('input', () => {
+                clearTimeout(courseNameSaveTimeout);
+                courseNameSaveTimeout = setTimeout(() => {
+                    const currentCourseId = inputId.dataset.currentCourseId;
+                    const courseName = inputName.value.trim();
+
+                    if (currentCourseId) {
+                        this.courseManager.updateCourseName(currentCourseId, courseName);
+                    }
+                }, 800); // 800ms防抖
+            });
+
+            // 课程名称失焦事件
+            inputName.addEventListener('blur', () => {
+                clearTimeout(courseNameSaveTimeout);
+                const currentCourseId = inputId.dataset.currentCourseId;
+                const courseName = inputName.value.trim();
+
+                if (currentCourseId) {
+                    this.courseManager.updateCourseName(currentCourseId, courseName);
+                }
+            });
+
+            // 恢复课程名称（如果有保存的数据）
+            const currentCourseId = inputId.dataset.currentCourseId;
+            if (currentCourseId && this.courseManager.courseNameMap[currentCourseId]) {
+                inputName.value = this.courseManager.courseNameMap[currentCourseId];
+            }
+
             return div;
         }
 
@@ -738,7 +1304,7 @@
             `;
 
             const title = document.createElement('h3');
-            title.textContent = '自动选课工具 v2.0.0';
+            title.textContent = '自动选课工具 V1.1.0';
             title.style.cssText = `
                 margin: 0;
                 color: #333;
@@ -832,6 +1398,14 @@
             this.panel.appendChild(this.stopButton);
             this.panel.appendChild(this.resetButton);
 
+            // 添加成功记录区域
+            this.createSuccessRecordsContainer();
+            this.panel.appendChild(this.successRecordsContainer);
+
+            // 添加作者信息底部区域
+            this.createAuthorFooter();
+            this.panel.appendChild(this.authorFooter);
+
             // 使面板可拖拽
             this.makeDraggable(this.panel, titleBar);
 
@@ -905,12 +1479,223 @@
                 }
             });
         }
+
+        /**
+         * 创建成功记录区域
+         */
+        createSuccessRecordsContainer() {
+            this.successRecordsContainer = document.createElement('div');
+            this.successRecordsContainer.style.cssText = `
+                margin-top: 15px;
+                padding: 10px;
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 5px;
+                font-size: 12px;
+            `;
+
+            const recordsTitle = document.createElement('div');
+            recordsTitle.style.cssText = `
+                font-weight: bold;
+                color: #28a745;
+                margin-bottom: 8px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            `;
+            recordsTitle.innerHTML = `
+                <span>📝 选课成功记录</span>
+                <button id="clear-records-btn" style="
+                    font-size: 10px;
+                    padding: 2px 6px;
+                    background-color: #dc3545;
+                    color: white;
+                    border: none;
+                    border-radius: 3px;
+                    cursor: pointer;
+                ">清除记录</button>
+            `;
+
+            this.recordsList = document.createElement('div');
+            this.recordsList.id = 'success-records-list';
+            this.recordsList.style.cssText = `
+                max-height: 120px;
+                overflow-y: auto;
+                font-size: 11px;
+                line-height: 1.4;
+            `;
+
+            this.successRecordsContainer.appendChild(recordsTitle);
+            this.successRecordsContainer.appendChild(this.recordsList);
+
+            // 绑定清除记录按钮事件
+            recordsTitle.querySelector('#clear-records-btn').addEventListener('click', () => {
+                this.clearSuccessRecords();
+            });
+
+            // 加载现有记录
+            const existingRecords = this.getSuccessRecords();
+            this.updateRecordsList(existingRecords);
+        }
+
+        /**
+         * 更新成功记录列表
+         */
+        updateRecordsList(records) {
+            if (!this.recordsList) return;
+
+            if (records.length === 0) {
+                this.recordsList.innerHTML = `
+                    <div style="color: #6c757d; text-align: center; padding: 10px;">
+                        暂无选课成功记录
+                    </div>
+                `;
+                return;
+            }
+
+            this.recordsList.innerHTML = records.map(record => `
+                <div style="
+                    margin-bottom: 5px;
+                    padding: 5px;
+                    background-color: #e8f5e8;
+                    border-radius: 3px;
+                    border-left: 3px solid #28a745;
+                ">
+                    <strong>课程:</strong> ${record.courseId}
+                    <span style="color: #28a745;">[${record.courseType}]</span>
+                    <div style="font-size: 11px; color: #666; margin-top: 2px;">
+                        选课时间: ${record.time}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        /**
+         * 添加选课成功记录
+         */
+        addSuccessRecord(courseData) {
+            console.log('[选课助手] 添加选课成功记录:', courseData);
+            const { courseId, courseType } = courseData;
+
+            if (!courseId || !courseType) {
+                console.error('[选课助手] 添加成功记录失败: 缺少必要数据', { courseId, courseType });
+                return;
+            }
+
+            const courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
+            if (!courseTypeInfo) {
+                console.error('[选课助手] 添加成功记录失败: 无效的课程类型', courseType);
+                return;
+            }
+
+            // 创建记录
+            const record = {
+                courseId,
+                courseType: courseTypeInfo.name,
+                timestamp: Date.now(),
+                time: new Date().toLocaleString()
+            };
+
+            // 获取现有记录
+            const existingRecords = this.getSuccessRecords();
+            existingRecords.unshift(record); // 添加到开头
+
+            // 限制记录数量（最多保存10条）
+            const limitedRecords = existingRecords.slice(0, 10);
+
+            // 保存到本地存储
+            this.saveSuccessRecords(limitedRecords);
+
+            // 更新显示
+            this.updateRecordsList(limitedRecords);
+
+            console.log(`[选课助手] 选课成功记录已添加: ${courseId} [${courseTypeInfo.name}]`);
+        }
+
+        /**
+         * 获取成功记录
+         */
+        getSuccessRecords() {
+            try {
+                const recordsStr = localStorage.getItem('scmu_success_records') || '[]';
+                return JSON.parse(recordsStr);
+            } catch (error) {
+                console.error('[选课助手] 读取成功记录失败:', error);
+                return [];
+            }
+        }
+
+        /**
+         * 保存成功记录
+         */
+        saveSuccessRecords(records) {
+            try {
+                localStorage.setItem('scmu_success_records', JSON.stringify(records));
+            } catch (error) {
+                console.error('[选课助手] 保存成功记录失败:', error);
+            }
+        }
+
+        /**
+         * 清除成功记录
+         */
+        clearSuccessRecords() {
+            if (confirm('确定要清除所有选课成功记录吗？')) {
+                localStorage.removeItem('scmu_success_records');
+                this.updateRecordsList([]);
+                this.courseManager.showNotification('成功记录已清除', 'info');
+            }
+        }
+
+        /**
+         * 创建作者信息底部区域
+         */
+        createAuthorFooter() {
+            this.authorFooter = document.createElement('div');
+            this.authorFooter.style.cssText = `
+                margin-top: 10px;
+                padding: 8px 12px;
+                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                border-radius: 8px;
+                border: 1px solid #dee2e6;
+                font-size: 11px;
+                color: #495057;
+                line-height: 1.4;
+                text-align: center;
+            `;
+
+            this.authorFooter.innerHTML = `
+                <div style="margin-bottom: 4px; font-weight: bold; color: #007bff;">
+                    📝 SCMU自动选课助手 V1.1.0
+                </div>
+                <div style="margin-bottom: 3px;">
+                    <span style="color: #6c757d;">作者：</span>
+                    <a href="https://github.com/SuShuHeng" target="_blank" style="color: #007bff; text-decoration: none; font-weight: 500;">SuShuHeng</a>
+                </div>
+                <div style="margin-bottom: 3px;">
+                    <span style="color: #6c757d;">项目：</span>
+                    <a href="https://github.com/SuShuHeng/SCMU_CC_Helper" target="_blank" style="color: #007bff; text-decoration: none;">GitHub仓库</a>
+                    <span style="color: #28a745; margin-left: 4px;">(Apache 2.0)</span>
+                </div>
+                <div style="color: #dc3545; font-weight: bold; font-size: 10px; margin-top: 4px;">
+                    ⚠️ 本项目仅用于学习，禁止用于盈利！
+                </div>
+            `;
+        }
     }
 
     // ==================== 初始化 ====================
-    console.log('%c🎓 中南民族大学自动选课助手 v2.0.0', 'color: #007bff; font-size: 16px; font-weight: bold;');
+    console.log('%c🎓 中南民族大学自动选课助手 V1.1.0', 'color: #007bff; font-size: 16px; font-weight: bold;');
     console.log('%c✨ 现已支持7种课程类型：推荐选课、方案内选课、方案外选课、重修选课、体育选择课、通识课程选修、创新创业类选修课', 'color: #28a745; font-size: 12px;');
+    console.log('%c💾 自动保存课程数据，支持持久化存储，完善UI恢复', 'color: #17a2b8; font-size: 12px;');
     console.log('%c⚠️ 本工具仅供学习交流使用，请遵守学校相关规定', 'color: #ffc107; font-size: 12px;');
+    console.log('');
+    console.log('%c📜 版权信息：', 'color: #6f42c1; font-size: 14px; font-weight: bold;');
+    console.log('%c作者: SuShuHeng (https://github.com/SuShuHeng)', 'color: #6c757d; font-size: 11px;');
+    console.log('%c项目仓库: https://github.com/SuShuHeng/SCMU_CC_Helper', 'color: #6c757d; font-size: 11px;');
+    console.log('%c开源协议: Apache 2.0 License', 'color: #6c757d; font-size: 11px;');
+    console.log('%c⚠️ 本项目仅用于学习，禁止用于盈利！', 'color: #dc3545; font-size: 11px; font-weight: bold;');
+    console.log('');
 
     const courseManager = new CourseRegistrationManager();
     const uiController = new UIController(courseManager);

@@ -1,46 +1,55 @@
-# 🔧 API 参考文档 (V1.0.4)
+# 🔧 API 参考文档 (V1.1.0)
 
 > 📚 **开发者指南**
-> 这份文档详细介绍了抢课助手 V1.0.4 版本的 API、类和方法，适合进行二次开发和定制。
+> 这份文档详细介绍了抢课助手 V1.1.0 版本的 API、类和方法，适合进行二次开发和定制。
+>
+> 🎓 **V1.1.0 重大更新**：新增7种课程类型支持、版本功能对等、作者信息显示。
 
 ## 📋 目录
 
 1. [核心架构概览](#核心架构概览)
-2. [LocalDataManager 类](#localdatamanager-类)
-3. [CourseRegistrationManager 类](#courseregistrationmanager-类)
-4. [UIController 类](#uicontroller-类)
-5. [配置系统](#配置系统)
-6. [事件系统](#事件系统)
-7. [使用示例](#使用示例)
-8. [扩展开发指南](#扩展开发指南)
+2. [课程类型系统 (V1.1.0 新增)](#课程类型系统-v110-新增)
+3. [LocalDataManager 类](#localdatamanager-类)
+4. [CourseRegistrationManager 类](#courseregistrationmanager-类)
+5. [UIController 类](#uicontroller-类)
+6. [配置系统](#配置系统)
+7. [事件系统](#事件系统)
+8. [使用示例](#使用示例)
+9. [扩展开发指南](#扩展开发指南)
 
 ---
 
 ## 🏗️ 核心架构概览
 
-### V1.0.4 架构变化
+### V1.1.0 架构变化
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    V1.0.4 架构图                              │
+│                    V1.1.0 架构图                              │
 ├─────────────────────────────────────────────────────────────┤
 │  UIController (UI控制层)                                    │
 │  ├── 三态UI系统 (悬浮按钮/完整面板/迷你状态)                  │
+│  ├── 课程类型选择界面 (V1.1.0 新增)                          │
+│  ├── 作者信息显示 (V1.1.0 新增)                              │
 │  ├── 事件监听和处理                                           │
 │  └── 数据恢复和同步                                           │
 ├─────────────────────────────────────────────────────────────┤
 │  CourseRegistrationManager (业务逻辑层)                      │
 │  ├── 课程管理 (增删改查)                                       │
+│  ├── 7种课程类型支持 (V1.1.0 重大更新)                        │
 │  ├── 选课自动化                                               │
 │  ├── 状态跟踪                                                 │
 │  └── 事件发布                                                 │
 ├─────────────────────────────────────────────────────────────┤
-│  LocalDataManager (数据持久化层) - V1.0.4 新增                │
+│  LocalDataManager (数据持久化层)                              │
+│  ├── 课程类型存储 (V1.1.0 新增)                              │
+│  ├── 数据版本管理 (V2.0.0)                                    │
 │  ├── 本地存储管理                                             │
 │  ├── 数据序列化/反序列化                                       │
 │  └── 存储兼容性处理                                           │
 ├─────────────────────────────────────────────────────────────┤
 │  CONFIG (配置层)                                            │
+│  ├── 7种课程类型配置 (V1.1.0 新增)                            │
 │  ├── API配置                                                 │
 │  ├── UI配置                                                  │
 │  ├── 存储配置                                                 │
@@ -63,7 +72,274 @@ UIController
 
 ---
 
-## 💾 LocalDataManager 类 (V1.0.4 新增)
+## 🎓 课程类型系统 (V1.1.0 新增)
+
+V1.1.0 引入了完整的课程类型系统，支持中南民族大学选课系统的7种课程类型。
+
+### 课程类型配置
+
+```javascript
+export const COURSE_TYPES = {
+    TJXK: {
+        method: 'handleTjxk',
+        name: '推荐选课',
+        needsGlJxbid: true,
+        needsXkzy: false,
+        description: '系统推荐的专业课程'
+    },
+    BFAK: {
+        method: 'handleBfakc',
+        name: '方案内选课',
+        needsGlJxbid: true,
+        needsXkzy: false,
+        description: '培养方案内的必修课程'
+    },
+    KZYXK: {
+        method: 'handleKzyxk',
+        name: '方案外选课',
+        needsGlJxbid: true,
+        needsXkzy: false,
+        description: '培养方案外的选修课程'
+    },
+    CXXK: {
+        method: 'handleCxxk',
+        name: '重修选课',
+        needsGlJxbid: true,
+        needsXkzy: false,
+        description: '重修之前未通过的课程'
+    },
+    TYKXK: {
+        method: 'handleTykxk',
+        name: '体育选择课',
+        needsGlJxbid: false,
+        needsXkzy: false,
+        description: '体育类选修课程'
+    },
+    QXGXK: {
+        method: 'handleQxgxk',
+        name: '通识课程选修',
+        needsGlJxbid: true,
+        needsXkzy: true,
+        description: '通识教育选修课程'
+    },
+    CXCY: {
+        method: 'handleCxcy',
+        name: '创新创业类选修课',
+        needsGlJxbid: false,
+        needsXkzy: false,
+        description: '创新创业教育类选修课程'
+    }
+};
+```
+
+### 课程类型管理类
+
+#### CourseTypeManager
+
+```javascript
+class CourseTypeManager {
+    constructor() {
+        this.courseTypes = CONFIG.COURSE_TYPES;
+        this.defaultType = CONFIG.GRAB.DEFAULT_COURSE_TYPE;
+    }
+
+    /**
+     * 获取所有课程类型
+     */
+    getAllCourseTypes() {
+        return this.courseTypes;
+    }
+
+    /**
+     * 获取课程类型信息
+     * @param {string} typeCode - 课程类型代码
+     * @returns {Object|null} 课程类型信息
+     */
+    getCourseTypeInfo(typeCode) {
+        return this.courseTypes[typeCode] || null;
+    }
+
+    /**
+     * 验证课程类型是否有效
+     * @param {string} typeCode - 课程类型代码
+     * @returns {boolean} 是否有效
+     */
+    isValidCourseType(typeCode) {
+        return typeCode in this.courseTypes;
+    }
+
+    /**
+     * 获取推荐的课程类型
+     * @param {string} courseCategory - 课程类别
+     * @returns {string} 推荐的课程类型代码
+     */
+    getRecommendedType(courseCategory) {
+        const recommendations = {
+            'major': 'TJXK',      // 专业课程推荐选课
+            'required': 'BFAK',   // 必修课程方案内选课
+            'elective': 'KZYXK',  // 选修课程方案外选课
+            'pe': 'TYKXK',        // 体育课程体育选择课
+            'general': 'QXGXK',   // 通识课程通识选修
+            'innovation': 'CXCY'  // 创新课程创新创业
+        };
+
+        return recommendations[courseCategory] || this.defaultType;
+    }
+
+    /**
+     * 构建课程API URL
+     * @param {string} typeCode - 课程类型代码
+     * @param {string} courseId - 课程ID
+     * @param {string} expClassId - 实验班ID
+     * @param {number} volunteerLevel - 志愿等级
+     * @returns {string} 完整的API URL
+     */
+    buildCourseApiUrl(typeCode, courseId, expClassId = '', volunteerLevel = null) {
+        const typeInfo = this.getCourseTypeInfo(typeCode);
+        if (!typeInfo) {
+            throw new Error(`未知的课程类型: ${typeCode}`);
+        }
+
+        const baseUrl = `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.COURSE_OPERATION}${typeInfo.method}`;
+        const params = new URLSearchParams();
+
+        params.append('jxbid', courseId);
+
+        if (typeInfo.needsGlJxbid && expClassId) {
+            params.append('glJxbid', expClassId);
+        }
+
+        if (typeInfo.needsXkzy && volunteerLevel !== null) {
+            params.append('xkzy', volunteerLevel.toString());
+        }
+
+        return `${baseUrl}&${params.toString()}`;
+    }
+}
+
+// 导出全局实例
+export const courseTypeManager = new CourseTypeManager();
+```
+
+### 课程类型相关的 CourseRegistrationManager 方法
+
+#### addCourse(jxbid, courseType)
+
+```javascript
+/**
+ * 添加课程到选课列表 (V1.1.0 更新)
+ * @param {string} jxbid - 课程ID
+ * @param {string} courseType - 课程类型代码 (V1.1.0 新增)
+ * @returns {boolean} 添加是否成功
+ */
+addCourse(jxbid, courseType = CONFIG.GRAB.DEFAULT_COURSE_TYPE) {
+    // 基础验证
+    if (!jxbid || jxbid.trim() === '') {
+        console.warn(`${CONFIG.LOG.LOG_PREFIX} 课程ID不能为空`);
+        return false;
+    }
+
+    const trimmedId = jxbid.trim();
+
+    // 检查是否已存在
+    if (this.courses.includes(trimmedId)) {
+        console.warn(`${CONFIG.LOG.LOG_PREFIX} 课程 ${trimmedId} 已存在，无需重复添加`);
+        return false;
+    }
+
+    // 验证课程类型 (V1.1.0 新增)
+    if (!CONFIG.COURSE_TYPES[courseType]) {
+        console.warn(`${CONFIG.LOG.LOG_PREFIX} 未知的课程类型: ${courseType}`);
+        return false;
+    }
+
+    // 添加课程
+    this.courses.push(trimmedId);
+    this.courseTypeMap[trimmedId] = courseType;  // V1.1.0 新增
+    this.initCourseState(trimmedId, courseType);
+
+    const courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
+    console.log(`${CONFIG.LOG.LOG_PREFIX} 已添加课程: ${trimmedId} [${courseTypeInfo.name}]`);
+
+    // 自动保存数据
+    this.saveCurrentData();
+
+    return true;
+}
+```
+
+#### buildCourseApiUrl(courseType, jxbid, glJxbid, xkzy)
+
+```javascript
+/**
+ * 构建选课API端点URL (V1.1.0 更新)
+ * @param {string} courseType - 课程类型代码
+ * @param {string} jxbid - 课程ID
+ * @param {string} glJxbid - 实验班ID（可选）
+ * @param {number} xkzy - 志愿等级（通识选修课需要）
+ * @returns {string} 完整的API端点URL
+ */
+buildCourseApiUrl(courseType, jxbid, glJxbid = '', xkzy = null) {
+    const courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
+    if (!courseTypeInfo) {
+        throw new Error(`未知的课程类型: ${courseType}`);
+    }
+
+    const baseUrl = `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.COURSE_OPERATION}${courseTypeInfo.method}`;
+    const params = new URLSearchParams();
+
+    params.append('jxbid', jxbid);
+
+    if (courseTypeInfo.needsGlJxbid && glJxbid) {
+        params.append('glJxbid', glJxbid);
+    }
+
+    if (courseTypeInfo.needsXkzy && xkzy !== null) {
+        params.append('xkzy', xkzy.toString());
+    }
+
+    return `${baseUrl}&${params.toString()}`;
+}
+```
+
+### 使用示例
+
+```javascript
+// 1. 获取所有课程类型
+const allTypes = courseTypeManager.getAllCourseTypes();
+console.log('所有课程类型:', allTypes);
+
+// 2. 获取特定课程类型信息
+const tjxkInfo = courseTypeManager.getCourseTypeInfo('TJXK');
+console.log('推荐选课信息:', tjxkInfo);
+
+// 3. 获取推荐类型
+const recommendedType = courseTypeManager.getRecommendedType('elective');
+console.log('选修课程推荐类型:', recommendedType); // 'KZYXK'
+
+// 4. 验证课程类型
+const isValid = courseTypeManager.isValidCourseType('KZYXK');
+console.log('课程类型是否有效:', isValid); // true
+
+// 5. 构建API URL
+const apiUrl = courseTypeManager.buildCourseApiUrl(
+    'KZYXK',
+    '2024CS101',
+    'EXP001',
+    null
+);
+console.log('API URL:', apiUrl);
+
+// 6. 添加课程时指定类型
+courseManager.addCourse('2024CS101', 'TJXK');  // 推荐选课
+courseManager.addCourse('2024ART301', 'KZYXK'); // 方案外选课
+courseManager.addCourse('2024PE101', 'TYKXK');  // 体育选择课
+courseManager.addCourse('2024GEN201', 'QXGXK'); // 通识课程选修
+```
+
+---
+
+## 💾 LocalDataManager 类
 
 负责本地数据的持久化存储和管理，支持 GM_setValue/GM_getValue API。
 
@@ -83,8 +359,8 @@ this.STORAGE_KEYS = {
     METADATA: 'scmu_metadata'
 };
 
-// 数据版本
-this.DATA_VERSION = '1.0.0';
+// 数据版本 (V1.1.0 升级到 2.0.0)
+this.DATA_VERSION = '2.0.0';
 
 // 存储可用性检查
 this.storageAvailable = boolean;
@@ -137,10 +413,23 @@ loadCoursesData(): Object | null
 ```javascript
 {
     courses: string[],              // 课程ID数组
-    courseDetails: Object[],        // 课程详细信息
+    courseDetails: Object[],        // 课程详细信息 (V1.1.0 包含courseType)
     experimentalClasses: Object,     // 实验班数据
-    metadata: Object               // 元数据
+    metadata: Object               // 元数据 (V1.1.0 版本 2.0.0)
 } | null
+```
+
+**V1.1.0 课程详细信息结构**:
+```javascript
+courseDetails: [
+    {
+        id: "courseId",
+        name: "自定义名称",
+        courseType: "KZYXK",        // V1.1.0 新增：课程类型
+        addedTime: timestamp,
+        status: { success: boolean }
+    }
+]
 ```
 
 #### updateCourseName(courseId, courseName)
@@ -187,12 +476,18 @@ getSavedCoursesSummary(): Object
 
 负责课程注册的核心业务逻辑和自动化选课功能。
 
-### V1.0.4 更新内容
+### V1.1.0 更新内容
 
-- 集成 LocalDataManager
-- 新增事件系统
-- 增强状态管理
-- 改进错误处理
+- 7种课程类型支持 (重大功能)
+- 课程类型映射管理 (courseTypeMap)
+- 版本功能完全对等
+- 作者信息显示
+- 增强的数据持久化 (V2.0.0)
+- V1.0.4 遗留功能保留：
+  - 集成 LocalDataManager
+  - 事件系统
+  - 增强状态管理
+  - 改进错误处理
 
 ### 构造函数
 
@@ -206,11 +501,12 @@ new CourseRegistrationManager()
 this.courses = [];                    // 课程ID数组
 this.statusMap = {};                  // 课程状态映射
 this.glJxbidMap = {};                 // 实验班信息映射
+this.courseTypeMap = {};              // V1.1.0 新增：课程类型映射
 this.intervalId = null;               // 选课定时器ID
 this.localDataManager = LocalDataManager;  // 本地数据管理器实例
 ```
 
-### 核心方法 (V1.0.4 更新)
+### 核心方法 (V1.1.0 更新)
 
 #### initEventListeners()
 初始化事件监听器。
@@ -1136,5 +1432,16 @@ class ComponentBase {
 
 ---
 
-*最后更新时间: 2025年12月3日 (V1.0.4)*
+*最后更新时间: 2025年12月9日 (V1.1.0)*
 *如有问题或建议，欢迎提交Issue或Pull Request*
+
+---
+
+## 🔗 相关资源
+
+- [项目主页](https://github.com/SuShuHeng/SCMU_CC_Helper)
+- [V1.1.0发布说明](v1.1.0-release-notes.md)
+- [课程类型使用指南](course-types-guide.md)
+- [安装指南](installation-guide.md)
+- [JavaScript特性文档](javascript-features.md)
+- [故障排除指南](troubleshooting.md)

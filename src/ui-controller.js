@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version 1.0.5
+ * @version V1.1.0
  * @description 专为中南民族大学学生设计的自动化课程注册助手UI控制模块
  *
  * Copyright (c) 2025 SuShuHeng
