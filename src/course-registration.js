@@ -38,6 +38,8 @@ class CourseRegistrationManager {
         this.statusMap = {};
         // 记录每门课程的实验班信息
         this.glJxbidMap = {};
+        // 记录每门课程的课程类型
+        this.courseTypeMap = {};
         // 控制选课的定时器
         this.intervalId = null;
 
@@ -145,14 +147,46 @@ class CourseRegistrationManager {
     }
 
     /**
+     * 构建选课API端点URL
+     * @param {string} courseType - 课程类型
+     * @param {string} jxbid - 课程ID
+     * @param {string} glJxbid - 实验班ID（可选）
+     * @param {number} xkzy - 志愿等级（通识选修课需要）
+     * @returns {string} 完整的API端点URL
+     */
+    buildCourseApiUrl(courseType, jxbid, glJxbid = '', xkzy = null) {
+        const courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
+        if (!courseTypeInfo) {
+            throw new Error(`未知的课程类型: ${courseType}`);
+        }
+
+        const baseUrl = `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.COURSE_OPERATION}${courseTypeInfo.method}`;
+        const params = new URLSearchParams();
+
+        params.append('jxbid', jxbid);
+
+        if (courseTypeInfo.needsGlJxbid && glJxbid) {
+            params.append('glJxbid', glJxbid);
+        }
+
+        if (courseTypeInfo.needsXkzy && xkzy !== null) {
+            params.append('xkzy', xkzy.toString());
+        }
+
+        return `${baseUrl}&${params.toString()}`;
+    }
+
+    /**
      * 初始化每个课程的状态
      * @param {string} jxbid - 课程ID
+     * @param {string} courseType - 课程类型
      */
-    initCourseState(jxbid) {
+    initCourseState(jxbid, courseType = CONFIG.GRAB.DEFAULT_COURSE_TYPE) {
         this.statusMap[jxbid] = {
             success: false,
             glReady: false,
-            glAttemptIndex: 0
+            glAttemptIndex: 0,
+            courseType: courseType
         };
     }
 
@@ -200,24 +234,29 @@ class CourseRegistrationManager {
      */
     async trySelectCourse(jxbid) {
         const state = this.statusMap[jxbid];
+        const courseType = this.courseTypeMap[jxbid] || CONFIG.GRAB.DEFAULT_COURSE_TYPE;
 
         if (state.success || !state.glReady) return;
 
         const glList = this.glJxbidMap[jxbid];
         let url = "";
         let glInfo = "";
+        let courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
 
-        if (glList.length > 0) {
+        // 根据课程类型构建不同的请求参数
+        if (courseTypeInfo.needsGlJxbid && glList && glList.length > 0) {
             if (state.glAttemptIndex >= glList.length) {
                 console.log(`❌ [${jxbid}] 所有实验班尝试失败`);
                 state.glAttemptIndex = 0;
             }
 
             const glJxbid = glList[state.glAttemptIndex];
-            url = `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.COURSE_REGISTRATION}${encodeURIComponent(jxbid)}&glJxbid=${encodeURIComponent(glJxbid)}`;
+            url = this.buildCourseApiUrl(courseType, jxbid, glJxbid,
+                courseTypeInfo.needsXkzy ? CONFIG.GRAB.DEFAULT_VOLUNTEER_LEVEL : null);
             glInfo = ` 实验班: ${glJxbid}`;
         } else {
-            url = `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.COURSE_REGISTRATION}${encodeURIComponent(jxbid)}`;
+            url = this.buildCourseApiUrl(courseType, jxbid, '',
+                courseTypeInfo.needsXkzy ? CONFIG.GRAB.DEFAULT_VOLUNTEER_LEVEL : null);
         }
 
         try {
@@ -230,9 +269,9 @@ class CourseRegistrationManager {
             if (!response.ok) {
                 const html = await response.text();
                 if (this.checkCourseFull(html)) {
-                    console.log(`⚠️ [${jxbid}] 课程已满，但继续尝试`);
+                    console.log(`⚠️ [${jxbid}][${courseTypeInfo.name}] 课程已满，但继续尝试`);
                 } else {
-                    console.error(`🚫 [${jxbid}] 返回非 JSON 数据：`, html);
+                    console.error(`🚫 [${jxbid}][${courseTypeInfo.name}] 返回非 JSON 数据：`, html);
                 }
                 throw new Error(`请求失败：HTTP ${response.status}`);
             }
@@ -240,7 +279,7 @@ class CourseRegistrationManager {
             const data = await response.json();
 
             if (data.success) {
-                console.log(`✅ [成功] ${jxbid}${glInfo} 选课成功！时间: ${data.xksj || new Date().toLocaleTimeString()}`);
+                console.log(`✅ [${courseTypeInfo.name}][成功] ${jxbid}${glInfo} 选课成功！时间: ${data.xksj || new Date().toLocaleTimeString()}`);
                 state.success = true;
 
                 // 自动保存选课成功状态
@@ -248,18 +287,24 @@ class CourseRegistrationManager {
 
                 // 触发成功事件
                 const event = new CustomEvent('course:success', {
-                    detail: { courseId: jxbid, timestamp: Date.now() }
+                    detail: { courseId: jxbid, courseType: courseType, timestamp: Date.now() }
                 });
                 document.dispatchEvent(event);
             } else {
-                console.log(`⚠️ [${jxbid}] 选课失败${glInfo ? `，继续尝试下一个实验班` : ""}：`, data);
-                if (glList.length > 0) {
+                console.log(`⚠️ [${courseTypeInfo.name}][${jxbid}] 选课失败${glInfo ? `，继续尝试下一个实验班` : ""}：`, data);
+
+                // 特殊错误处理
+                if (data.message && data.message.includes('未获取到教学班，非法操作')) {
+                    console.warn(`⚠️ [${jxbid}] 可能是课程类型不匹配，当前使用: ${courseTypeInfo.name}`);
+                }
+
+                if (courseTypeInfo.needsGlJxbid && glList && glList.length > 0) {
                     state.glAttemptIndex++;
                 }
             }
         } catch (error) {
-            console.error(`🚫 [${jxbid}] 请求错误:`, error);
-            if (glList.length > 0) {
+            console.error(`🚫 [${courseTypeInfo.name}][${jxbid}] 请求错误:`, error);
+            if (courseTypeInfo.needsGlJxbid && glList && glList.length > 0) {
                 state.glAttemptIndex++;
             }
         }
@@ -305,8 +350,9 @@ class CourseRegistrationManager {
     /**
      * 添加课程到选课列表
      * @param {string} jxbid - 课程ID
+     * @param {string} courseType - 课程类型
      */
-    addCourse(jxbid) {
+    addCourse(jxbid, courseType = CONFIG.GRAB.DEFAULT_COURSE_TYPE) {
         // 基础验证
         if (!jxbid || jxbid.trim() === '') {
             console.warn(`${CONFIG.LOG.LOG_PREFIX} 课程ID不能为空`);
@@ -321,10 +367,19 @@ class CourseRegistrationManager {
             return false;
         }
 
+        // 验证课程类型
+        if (!CONFIG.COURSE_TYPES[courseType]) {
+            console.warn(`${CONFIG.LOG.LOG_PREFIX} 未知的课程类型: ${courseType}`);
+            return false;
+        }
+
         // 添加课程
         this.courses.push(trimmedId);
-        this.initCourseState(trimmedId);
-        console.log(`${CONFIG.LOG.LOG_PREFIX} 已添加课程: ${trimmedId}`);
+        this.courseTypeMap[trimmedId] = courseType;
+        this.initCourseState(trimmedId, courseType);
+
+        const courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
+        console.log(`${CONFIG.LOG.LOG_PREFIX} 已添加课程: ${trimmedId} [${courseTypeInfo.name}]`);
 
         // 自动保存数据
         this.saveCurrentData();
@@ -343,6 +398,7 @@ class CourseRegistrationManager {
             this.courses.splice(index, 1);
             delete this.statusMap[jxbid];
             delete this.glJxbidMap[jxbid];
+            delete this.courseTypeMap[jxbid];
             console.log(`${CONFIG.LOG.LOG_PREFIX} 已移除课程: ${jxbid}`);
 
             // ✅ 修复：直接从本地存储中删除课程记录
@@ -368,9 +424,10 @@ class CourseRegistrationManager {
      * 更新/替换课程ID
      * @param {string} oldCourseId - 旧课程ID
      * @param {string} newCourseId - 新课程ID
+     * @param {string} courseType - 课程类型
      * @returns {boolean} 是否更新成功
      */
-    updateCourse(oldCourseId, newCourseId) {
+    updateCourse(oldCourseId, newCourseId, courseType = CONFIG.GRAB.DEFAULT_COURSE_TYPE) {
         // 验证新课程ID格式
         if (!newCourseId || newCourseId.trim() === '') {
             console.warn(`${CONFIG.LOG.LOG_PREFIX} 新课程ID不能为空`);
@@ -380,7 +437,7 @@ class CourseRegistrationManager {
         const trimmedNewId = newCourseId.trim();
 
         // 验证格式
-        if (trimmedNewId.length < 6 || trimmedNewId.length > 20 || !/^[A-Za-z0-9]+$/.test(trimmedNewId)) {
+        if (trimmedNewId.length < 6 || trimmedNewId.length > 20 || !/^[A-Za-z0-9_-]+$/.test(trimmedNewId)) {
             console.warn(`${CONFIG.LOG.LOG_PREFIX} 新课程ID格式无效: ${trimmedNewId}`);
             return false;
         }
@@ -398,7 +455,7 @@ class CourseRegistrationManager {
         }
 
         // 添加新课程
-        return this.addCourse(trimmedNewId);
+        return this.addCourse(trimmedNewId, courseType);
     }
 
     /**
@@ -435,6 +492,8 @@ class CourseRegistrationManager {
             isRunning: !!this.intervalId,
             courses: this.courses.map(id => ({
                 id,
+                courseType: this.courseTypeMap[id] || CONFIG.GRAB.DEFAULT_COURSE_TYPE,
+                courseTypeName: CONFIG.COURSE_TYPES[this.courseTypeMap[id] || CONFIG.GRAB.DEFAULT_COURSE_TYPE]?.name || '未知类型',
                 success: this.statusMap[id]?.success || false,
                 glReady: this.statusMap[id]?.glReady || false,
                 experimentalClassCount: this.glJxbidMap[id]?.length || 0
@@ -514,6 +573,7 @@ class CourseRegistrationManager {
         this.courses = [];
         this.statusMap = {};
         this.glJxbidMap = {};
+        this.courseTypeMap = {};
 
         // 重置后保存空数据
         this.saveCurrentData();

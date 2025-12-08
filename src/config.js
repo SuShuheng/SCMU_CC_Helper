@@ -24,14 +24,67 @@
  * - 请遵守学校相关规定
  */
 
+// 课程类型配置
+export const COURSE_TYPES = {
+    TJXK: {
+        method: 'handleTjxk',
+        name: '推荐选课',
+        needsGlJxbid: true,
+        needsXkzy: false,
+        description: '系统推荐的专业课程'
+    },
+    BFAK: {
+        method: 'handleBfakc',
+        name: '方案内选课',
+        needsGlJxbid: true,
+        needsXkzy: false,
+        description: '培养方案内的必修课程'
+    },
+    KZYXK: {
+        method: 'handleKzyxk',
+        name: '方案外选课',
+        needsGlJxbid: true,
+        needsXkzy: false,
+        description: '培养方案外的选修课程'
+    },
+    CXXK: {
+        method: 'handleCxxk',
+        name: '重修选课',
+        needsGlJxbid: true,
+        needsXkzy: false,
+        description: '重修之前未通过的课程'
+    },
+    TYKXK: {
+        method: 'handleTykxk',
+        name: '体育选择课',
+        needsGlJxbid: false,
+        needsXkzy: false,
+        description: '体育类选修课程'
+    },
+    QXGXK: {
+        method: 'handleQxgxk',
+        name: '通识课程选修',
+        needsGlJxbid: true,
+        needsXkzy: true,
+        description: '通识教育选修课程'
+    },
+    CXCY: {
+        method: 'handleCxcy',
+        name: '创新创业类选修课',
+        needsGlJxbid: false,
+        needsXkzy: false,
+        description: '创新创业教育类选修课程'
+    }
+};
+
 // API端点配置
 export const API_CONFIG = {
     BASE_URL: 'https://xk.webvpn.scuec.edu.cn/xsxk',
     ENDPOINTS: {
         // 获取实验班信息
         GET_EXPERIMENTAL_CLASS: '/loadData.xk?method=getGljxb&jxbid=',
-        // 课程注册
-        COURSE_REGISTRATION: '/xkOper.xk?method=handleKzyxk&jxbid='
+        // 选课操作基础端点
+        COURSE_OPERATION: '/xkOper.xk?method='
     }
 };
 
@@ -44,7 +97,11 @@ export const GRAB_CONFIG = {
     // 最大重试次数
     MAX_RETRY_COUNT: 3,
     // 课程满员检测关键词
-    COURSE_FULL_KEYWORDS: ['课程已满', '已选满']
+    COURSE_FULL_KEYWORDS: ['课程已满', '已选满'],
+    // 默认志愿等级（用于通识选修课）
+    DEFAULT_VOLUNTEER_LEVEL: 1,
+    // 默认课程类型（向后兼容）
+    DEFAULT_COURSE_TYPE: 'KZYXK'
 };
 
 // 课程ID验证配置
@@ -83,7 +140,7 @@ export const UI_CONFIG = {
         fontSize: '14px',
         fontWeight: 'bold',
         position: 'fixed',
-        bottom: '20px',
+        top: '20px',
         right: '20px',
         cursor: 'pointer',
         zIndex: '9999',
@@ -101,7 +158,7 @@ export const UI_CONFIG = {
         backgroundColor: 'white',
         border: '1px solid #ccc',
         position: 'fixed',
-        bottom: '20px',
+        top: '90px',
         right: '20px',
         cursor: 'pointer',
         zIndex: '9999',
@@ -175,7 +232,9 @@ export const DEV_CONFIG = {
 // 导出所有配置
 export const CONFIG = {
     API: API_CONFIG,
+    COURSE_TYPES: COURSE_TYPES,
     GRAB: GRAB_CONFIG,
+    COURSE_ID: COURSE_ID_CONFIG,
     UI: UI_CONFIG,
     HTTP: HTTP_CONFIG,
     LOG: LOG_CONFIG,

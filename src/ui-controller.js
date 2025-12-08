@@ -175,7 +175,11 @@ class UIController {
                 courses.forEach((courseId, index) => {
                     console.log(`${CONFIG.LOG.LOG_PREFIX} 处理课程 ${index + 1}/${courses.length}: ${courseId}`);
 
-                    const courseInput = this.createCourseInput(index);
+                    // 获取课程的类型信息
+                    const courseType = this.courseManager.courseTypeMap[courseId] || CONFIG.GRAB.DEFAULT_COURSE_TYPE;
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${courseId}类型: ${courseType}`);
+
+                    const courseInput = this.createCourseInput(index, courseType);
                     console.log(`${CONFIG.LOG.LOG_PREFIX} 课程输入框HTML结构:`, courseInput.outerHTML);
 
                     const inputs = courseInput.querySelectorAll('input[type="text"]');
@@ -201,6 +205,15 @@ class UIController {
                     inputId.value = courseId;
                     inputId.dataset.currentCourseId = courseId;
                     console.log(`${CONFIG.LOG.LOG_PREFIX} 设置课程ID: ${courseId}`);
+
+                    // 设置课程类型选择器
+                    const courseTypeSelector = courseInput.querySelector('select');
+                    if (courseTypeSelector) {
+                        courseTypeSelector.value = courseType;
+                        console.log(`${CONFIG.LOG.LOG_PREFIX} 设置课程类型选择器: ${courseType}`);
+                    } else {
+                        console.warn(`${CONFIG.LOG.LOG_PREFIX} 未找到课程类型选择器`);
+                    }
 
                     // 设置课程名称（如果有的话）
                     const courseDetail = courseDetails.find(detail => detail.id === courseId);
@@ -703,9 +716,46 @@ class UIController {
      * @param {number} index - 课程索引
      * @returns {HTMLElement} 课程输入框容器
      */
-    createCourseInput(index) {
+    /**
+     * 创建课程类型选择器
+     * @param {string} selectedType - 当前选中的课程类型
+     * @returns {HTMLSelectElement} 选择器元素
+     */
+    createCourseTypeSelector(selectedType = CONFIG.GRAB.DEFAULT_COURSE_TYPE) {
+        const selector = document.createElement('select');
+        selector.style.cssText = `
+            margin-right: 10px;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            width: 120px;
+            font-size: 12px;
+        `;
+
+        // 添加课程类型选项
+        Object.entries(CONFIG.COURSE_TYPES).forEach(([key, type]) => {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = type.name;
+            option.title = type.description;
+            if (key === selectedType) {
+                option.selected = true;
+            }
+            selector.appendChild(option);
+        });
+
+        return selector;
+    }
+
+    createCourseInput(index, courseType = CONFIG.GRAB.DEFAULT_COURSE_TYPE) {
         const div = document.createElement('div');
         div.style.marginBottom = '10px';
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.flexWrap = 'wrap';
+
+        // 课程类型选择器
+        const courseTypeSelector = this.createCourseTypeSelector(courseType);
 
         const inputId = document.createElement('input');
         inputId.type = 'text';
@@ -729,6 +779,7 @@ class UIController {
             width: 200px;
         `;
 
+        div.appendChild(courseTypeSelector);
         div.appendChild(inputId);
         div.appendChild(inputName);
 
@@ -736,14 +787,16 @@ class UIController {
         inputId.addEventListener('blur', () => {
             const newJxbid = inputId.value.trim();
             const oldJxbid = inputId.dataset.currentCourseId || '';
+            const selectedCourseType = courseTypeSelector.value;
 
             if (newJxbid && this.isValidCourseId(newJxbid)) {
                 if (oldJxbid && oldJxbid !== newJxbid) {
                     // 替换课程情况
-                    const updated = courseManager.updateCourse(oldJxbid, newJxbid);
+                    const updated = courseManager.updateCourse(oldJxbid, newJxbid, selectedCourseType);
                     if (updated) {
                         inputId.dataset.currentCourseId = newJxbid;
-                        this.showNotification(`课程已更新: ${oldJxbid} → ${newJxbid}`, 'success');
+                        const courseTypeInfo = CONFIG.COURSE_TYPES[selectedCourseType];
+                        this.showNotification(`课程已更新: ${oldJxbid} → ${newJxbid} [${courseTypeInfo.name}]`, 'success');
                     } else {
                         // 更新失败，恢复原值
                         inputId.value = oldJxbid;
@@ -751,10 +804,11 @@ class UIController {
                     }
                 } else if (!oldJxbid) {
                     // 新增课程情况
-                    const added = courseManager.addCourse(newJxbid);
+                    const added = courseManager.addCourse(newJxbid, selectedCourseType);
                     if (added) {
                         inputId.dataset.currentCourseId = newJxbid;
-                        this.showNotification(`课程 ${newJxbid} 添加成功`, 'success');
+                        const courseTypeInfo = CONFIG.COURSE_TYPES[selectedCourseType];
+                        this.showNotification(`课程 ${newJxbid} 添加成功 [${courseTypeInfo.name}]`, 'success');
                     } else {
                         // 添加失败，可能是重复课程
                         inputId.value = '';
@@ -891,7 +945,7 @@ class UIController {
         this.container.id = 'course-container';
 
         // 添加第一个输入框
-        this.container.appendChild(this.createCourseInput(0));
+        this.container.appendChild(this.createCourseInput(0, CONFIG.GRAB.DEFAULT_COURSE_TYPE));
 
         // 添加更多课程按钮
         this.addButton = document.createElement('button');
@@ -904,7 +958,7 @@ class UIController {
         `;
         this.addButton.onclick = () => {
             const courseCount = this.container.children.length;
-            this.container.appendChild(this.createCourseInput(courseCount));
+            this.container.appendChild(this.createCourseInput(courseCount, CONFIG.GRAB.DEFAULT_COURSE_TYPE));
         };
 
         // 开始选课按钮
@@ -1562,7 +1616,7 @@ class UIController {
 
         // 重置UI状态
         this.container.innerHTML = '';
-        this.container.appendChild(this.createCourseInput(0));
+        this.container.appendChild(this.createCourseInput(0, CONFIG.GRAB.DEFAULT_COURSE_TYPE));
         this.updateScrollableContainer();
         this.updateButtonStates(false);
 
