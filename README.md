@@ -459,7 +459,7 @@ docs/ (新增文档)
 
 ---
 
-**❤️ 前人种树，后人乘凉，本项目启发于作者[xql799](https://github.com/xql799)的[SCUEC_AutoRobClass](https://github.com/xql799/SCUEC_AutoRobClass)项目中提供的信息，欢迎大家前去给个Star! **
+**❤️ 前人种树，后人乘凉，本项目启发于作者[xql799](https://github.com/xql799)的[SCUEC_AutoRobClass](https://github.com/xql799/SCUEC_AutoRobClass)项目中提供的信息，欢迎大家前去给个Star!**
 
 **⭐ 如果这个项目对你有帮助，请给个星标支持一下！**
 
