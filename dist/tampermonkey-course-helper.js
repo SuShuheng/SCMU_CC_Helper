@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SCMU自动选课助手
 // @namespace    https://github.com/sushuheng/SCMU_CC_Helper
-// @version      2.1.0
+// @version      V1.1.0
 // @description  专为中南民族大学学生设计的自动化课程注册助手，支持7种选课类型，完整UI优化和数据持久化
 // @author       SuShuHeng <https://github.com/sushuheng>
 // @license      APACHE 2.0
@@ -15,13 +15,13 @@
 // ==/UserScript==
 
 /**
- * 中南民族大学自动选课助手 v2.1.0
+ * 中南民族大学自动选课助手 V1.1.0
  * 油猴脚本版本 - 支持7种课程类型的完整选课功能，优化UI体验和数据持久化
  *
  * @file         tampermonkey-course-helper.js
  * @author       SuShuHeng <https://github.com/sushuheng>
  * @license      APACHE 2.0
- * @version      2.1.0
+ * @version      V1.1.0
  * @description   专为中南民族大学学生设计的自动化课程注册助手，支持所有选课类型，包含完整UI优化和数据持久化功能
  * @keywords     选课助手, SCMU, 中南民族大学, 自动选课, 课程注册
  *
@@ -88,7 +88,7 @@
             }
         }
 
-        saveCoursesData(courses, experimentalClasses, statusMap) {
+        saveCoursesData(courses, experimentalClasses, statusMap, courseTypeMap = {}, courseNameMap = {}) {
             if (!this.storageAvailable) {
                 console.warn(`[选课助手] 存储功能不可用，数据无法保存`);
                 return false;
@@ -120,13 +120,20 @@
                     console.warn(`[选课助手] 读取现有课程数据失败，将使用默认数据`);
                 }
 
-                // 合并数据，保留已存在的课程信息
+                // 合并数据，保留已存在的课程信息、课程类型和课程名称
                 const mergedCourses = validCourses.map(courseId => {
                     const existing = existingCourses.find(c => c.id === courseId);
+                    const courseName = courseNameMap[courseId] || existing?.name || this.DEFAULT_COURSE_NAME;
+                    const courseType = courseTypeMap[courseId] || existing?.courseType || CONFIG.GRAB.DEFAULT_COURSE_TYPE;
+
+                    console.log(`[选课助手] 合并课程数据: ${courseId}, 名称: "${courseName}", 类型: ${courseType}`);
+
                     return {
                         id: courseId,
-                        name: existing?.name || this.DEFAULT_COURSE_NAME,
+                        name: courseName, // 优先使用courseNameMap中的名称
+                        courseType: courseType,
                         addedTime: existing?.addedTime || Date.now(),
+                        nameUpdatedTime: courseNameMap[courseId] ? Date.now() : existing?.nameUpdatedTime, // 记录名称更新时间
                         status: {
                             success: statusMap[courseId]?.success || existing?.status?.success || false
                         }
@@ -150,6 +157,12 @@
                 GM_setValue(this.STORAGE_KEYS.METADATA, JSON.stringify(storageData.metadata));
 
                 console.log(`[选课助手] 数据保存成功，共${storageData.courses.length}门课程，会话次数:${storageData.metadata.sessionCount}`);
+                console.log(`[选课助手] 课程信息已保存:`, mergedCourses.map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    type: c.courseType,
+                    nameUpdated: c.nameUpdatedTime ? new Date(c.nameUpdatedTime).toLocaleTimeString() : '未更新'
+                })));
                 return true;
             } catch (error) {
                 console.error(`[选课助手] 保存数据失败:`, error);
@@ -180,7 +193,7 @@
                 }
 
                 const result = {
-                    courses: courses.map(course => course.id),
+                    courses: courses, // 直接返回完整的课程对象数组，包含courseType等信息
                     courseDetails: courses,
                     experimentalClasses,
                     metadata: metadata
@@ -230,6 +243,62 @@
                 return metadata.sessionCount || 0;
             } catch (e) {
                 return 0;
+            }
+        }
+
+        // 更新课程名称的专门方法
+        updateCourseName(courseId, courseName) {
+            if (!this.storageAvailable) {
+                console.warn(`[选课助手] 存储功能不可用，无法更新课程名称`);
+                return false;
+            }
+
+            try {
+                // 参数验证
+                if (!courseId || typeof courseId !== 'string' || courseId.trim().length === 0) {
+                    console.error(`[选课助手] 课程ID无效: ${courseId}`);
+                    return false;
+                }
+
+                if (typeof courseName !== 'string') {
+                    console.error(`[选课助手] 课程名称必须是字符串类型`);
+                    return false;
+                }
+
+                // 获取现有课程数据
+                const existingDataStr = GM_getValue(this.STORAGE_KEYS.COURSES, '[]');
+                let courses = [];
+                try {
+                    courses = JSON.parse(existingDataStr);
+                } catch (e) {
+                    console.error(`[选课助手] 读取现有课程数据失败:`, e);
+                    return false;
+                }
+
+                // 查找目标课程
+                const courseIndex = courses.findIndex(course => course.id === courseId);
+
+                if (courseIndex === -1) {
+                    console.warn(`[选课助手] 课程不存在，无法更新名称: ${courseId}`);
+                    return false;
+                }
+
+                // 更新课程名称
+                const oldName = courses[courseIndex].name;
+                courses[courseIndex].name = courseName.trim() || this.DEFAULT_COURSE_NAME;
+                courses[courseIndex].nameUpdatedTime = Date.now();
+
+                // 保存更新后的数据
+                GM_setValue(this.STORAGE_KEYS.COURSES, JSON.stringify(courses));
+
+                console.log(`[选课助手] 课程名称已更新: ${courseId}`);
+                console.log(`[选课助手] 旧名称: "${oldName}" → 新名称: "${courses[courseIndex].name}"`);
+                console.log(`[选课助手] 更新时间: ${new Date(courses[courseIndex].nameUpdatedTime).toLocaleString()}`);
+
+                return true;
+            } catch (error) {
+                console.error(`[选课助手] 更新课程名称失败:`, error);
+                return false;
             }
         }
 
@@ -338,7 +407,12 @@
                 zIndex: '9999',
                 fontSize: '16px',
                 borderRadius: '10px',
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                height: '800px',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                display: 'flex',
+                flexDirection: 'column'
             },
             FLOATING_BUTTON: {
                 width: '60px',
@@ -424,6 +498,7 @@
             this.statusMap = {};
             this.glJxbidMap = {};
             this.courseTypeMap = {};
+            this.courseNameMap = {}; // 添加课程名称映射
             this.intervalId = null;
 
             this.localDataManager = new LocalDataManager();
@@ -483,28 +558,39 @@
             if (savedData && savedData.courses.length > 0) {
                 console.log(`${CONFIG.LOG.LOG_PREFIX} 发现${savedData.courses.length}门保存的课程:`, savedData.courses);
 
-                // 更新课程列表
-                this.courses = savedData.courses;
+                // 更新课程列表 - 从完整课程对象中提取课程ID
+                this.courses = savedData.courses.map(course => course.id);
                 this.glJxbidMap = savedData.experimentalClasses;
 
-                // 初始化课程状态和类型（使用默认类型，因为旧版本没有保存类型信息）
-                savedData.courseDetails.forEach(courseDetail => {
-                    const courseType = 'KZYXK'; // 默认为方案外选课
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 提取的课程ID:`, this.courses);
+
+                // 初始化课程状态、类型和名称 - 从存储数据中恢复实际课程类型和名称
+                savedData.courses.forEach(courseDetail => {
+                    // 优先使用存储的课程类型，其次使用默认值
+                    const courseType = courseDetail.courseType || CONFIG.GRAB.DEFAULT_COURSE_TYPE;
+                    const courseName = courseDetail.name || this.localDataManager.DEFAULT_COURSE_NAME;
+
                     this.courseTypeMap[courseDetail.id] = courseType;
+                    this.courseNameMap[courseDetail.id] = courseName; // 恢复课程名称
                     this.statusMap[courseDetail.id] = {
                         success: courseDetail.status?.success || false,
                         glReady: false,
                         glAttemptIndex: 0,
                         courseType: courseType
                     };
+
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 恢复课程 ${courseDetail.id}:`);
+                    console.log(`  - 类型: ${courseType} (${CONFIG.COURSE_TYPES[courseType]?.name || '未知'})`);
+                    console.log(`  - 名称: "${courseName}"`);
                 });
 
+                console.log(`${CONFIG.LOG.LOG_PREFIX} 课程类型映射恢复完成:`, this.courseTypeMap);
                 console.log(`${CONFIG.LOG.LOG_PREFIX} 数据加载完成，准备触发UI更新事件`);
 
                 // 延迟触发数据加载完成事件，给UI更多初始化时间
                 const eventData = {
                     courses: this.courses,
-                    courseDetails: savedData.courseDetails,
+                    courseDetails: savedData.courses, // 使用完整的课程数据，包含courseType和name
                     statusMap: this.statusMap
                 };
 
@@ -523,7 +609,9 @@
             const success = this.localDataManager.saveCoursesData(
                 this.courses,
                 this.glJxbidMap,
-                this.statusMap
+                this.statusMap,
+                this.courseTypeMap, // 课程类型映射
+                this.courseNameMap  // 课程名称映射
             );
 
             if (!success) {
@@ -613,6 +701,11 @@
 
                     // 自动保存选课成功状态
                     this.saveCurrentData();
+
+                    // 立即触发UI更新，移除成功课程的输入框
+                    setTimeout(() => {
+                        this.handleCourseSuccess(jxbid, courseType, courseTypeInfo.name);
+                    }, 100);
 
                     // 触发成功事件
                     const event = new CustomEvent('course:success', {
@@ -848,12 +941,29 @@
             };
         }
 
+        // 处理课程选课成功后的UI更新
+        handleCourseSuccess(courseId, courseType, courseTypeName) {
+            console.log(`[选课助手] 处理课程选课成功后的UI更新: ${courseId} [${courseTypeName}]`);
+
+            // 通知UI控制器更新界面
+            const updateEvent = new CustomEvent('course:ui-update', {
+                detail: {
+                    action: 'success',
+                    courseId: courseId,
+                    courseType: courseType,
+                    courseTypeName: courseTypeName
+                }
+            });
+            document.dispatchEvent(updateEvent);
+        }
+
         reset() {
             this.stopLoop();
             this.courses = [];
             this.statusMap = {};
             this.glJxbidMap = {};
             this.courseTypeMap = {};
+            this.courseNameMap = {}; // 重置课程名称映射
 
             // 重置后保存空数据
             this.saveCurrentData();
@@ -861,47 +971,229 @@
             console.log(`${CONFIG.LOG.LOG_PREFIX} 所有状态已重置`);
         }
 
-        showNotification(message, type = 'info') {
+        showNotification(message, type = 'info', options = {}) {
+            const {
+                duration = 3000,
+                persistent = false,
+                action = null,
+                icon = null
+            } = options;
+
+            // 创建通知容器
             const notification = document.createElement('div');
+            notification.className = `course-notification notification-${type}`;
             notification.style.cssText = `
                 position: fixed;
                 top: 20px;
                 left: 50%;
                 transform: translateX(-50%);
-                padding: 15px 20px;
-                border-radius: 5px;
+                padding: 12px 20px;
+                border-radius: 8px;
                 color: white;
-                font-weight: bold;
+                font-weight: 500;
                 z-index: ${CONFIG.Z_INDEX.NOTIFICATION};
-                min-width: 200px;
+                min-width: 250px;
+                max-width: 500px;
                 text-align: center;
                 opacity: 0;
-                transition: opacity 0.3s ease;
+                transition: all 0.3s ease;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                font-size: 14px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255,255,255,0.2);
             `;
 
             const colors = {
-                success: '#28a745',
-                error: '#dc3545',
-                warning: '#ffc107',
-                info: '#007bff'
+                success: 'linear-gradient(135deg, #28a745, #20c997)',
+                error: 'linear-gradient(135deg, #dc3545, #f86c6b)',
+                warning: 'linear-gradient(135deg, #ffc107, #ff9800)',
+                info: 'linear-gradient(135deg, #007bff, #6610f2)'
             };
-            notification.style.backgroundColor = colors[type] || colors.info;
-            notification.textContent = message;
+            notification.style.background = colors[type] || colors.info;
 
-            document.body.appendChild(notification);
+            // 创建图标
+            const iconElement = document.createElement('span');
+            iconElement.style.cssText = `
+                margin-right: 8px;
+                font-size: 16px;
+            `;
+            iconElement.textContent = icon || this.getNotificationIcon(type);
 
+            // 创建消息文本
+            const messageElement = document.createElement('span');
+            messageElement.textContent = message;
+            messageElement.style.cssText = `
+                flex: 1;
+                text-align: left;
+            `;
+
+            notification.appendChild(iconElement);
+            notification.appendChild(messageElement);
+
+            // 添加操作按钮（如果存在）
+            if (action) {
+                const actionButton = document.createElement('button');
+                actionButton.textContent = action.text;
+                actionButton.style.cssText = `
+                    margin-left: 12px;
+                    padding: 4px 12px;
+                    background: rgba(255,255,255,0.2);
+                    border: 1px solid rgba(255,255,255,0.3);
+                    border-radius: 4px;
+                    color: white;
+                    font-size: 12px;
+                    cursor: pointer;
+                    transition: background 0.2s ease;
+                `;
+
+                actionButton.addEventListener('mouseenter', () => {
+                    actionButton.style.background = 'rgba(255,255,255,0.3)';
+                });
+
+                actionButton.addEventListener('mouseleave', () => {
+                    actionButton.style.background = 'rgba(255,255,255,0.2)';
+                });
+
+                actionButton.addEventListener('click', () => {
+                    if (action.callback) {
+                        action.callback();
+                    }
+                    this.closeNotification(notification);
+                });
+
+                notification.appendChild(actionButton);
+            }
+
+            // 添加关闭按钮（对于持久化通知）
+            if (persistent) {
+                const closeButton = document.createElement('button');
+                closeButton.innerHTML = '×';
+                closeButton.style.cssText = `
+                    margin-left: 8px;
+                    background: none;
+                    border: none;
+                    color: white;
+                    font-size: 18px;
+                    cursor: pointer;
+                    padding: 0;
+                    width: 20px;
+                    height: 20px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    opacity: 0.7;
+                    transition: opacity 0.2s ease;
+                `;
+
+                closeButton.addEventListener('mouseenter', () => {
+                    closeButton.style.opacity = '1';
+                });
+
+                closeButton.addEventListener('mouseleave', () => {
+                    closeButton.style.opacity = '0.7';
+                });
+
+                closeButton.addEventListener('click', () => {
+                    this.closeNotification(notification);
+                });
+
+                notification.appendChild(closeButton);
+            }
+
+            // 添加到页面并管理通知队列
+            this.addNotificationToQueue(notification, !persistent);
+
+            // 显示动画
             setTimeout(() => {
                 notification.style.opacity = '1';
+                notification.style.transform = 'translateX(-50%) translateY(0)';
             }, 10);
 
-            setTimeout(() => {
-                notification.style.opacity = '0';
+            // 自动关闭（如果不是持久化的）
+            if (!persistent && duration > 0) {
                 setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.parentNode.removeChild(notification);
-                    }
-                }, 300);
-            }, 3000);
+                    this.closeNotification(notification);
+                }, duration);
+            }
+
+            return notification;
+        }
+
+        // 获取通知图标
+        getNotificationIcon(type) {
+            const icons = {
+                success: '✓',
+                error: '✕',
+                warning: '⚠',
+                info: 'ℹ'
+            };
+            return icons[type] || icons.info;
+        }
+
+        // 通知队列管理
+        addNotificationToQueue(notification, autoClose = true) {
+            // 确保通知容器存在
+            if (!this.notificationContainer) {
+                this.notificationContainer = document.createElement('div');
+                this.notificationContainer.id = 'notification-container';
+                this.notificationContainer.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    z-index: ${CONFIG.Z_INDEX.NOTIFICATION};
+                    pointer-events: none;
+                `;
+                document.body.appendChild(this.notificationContainer);
+            }
+
+            // 调整其他通知的位置
+            const existingNotifications = this.notificationContainer.querySelectorAll('.course-notification');
+            existingNotifications.forEach((existingNotification, index) => {
+                const currentTop = parseInt(existingNotification.style.top) || 0;
+                existingNotification.style.top = `${currentTop + 80}px`;
+            });
+
+            // 添加新通知
+            notification.style.top = '0px';
+            this.notificationContainer.appendChild(notification);
+            this.notificationContainer.style.pointerEvents = 'auto';
+        }
+
+        // 关闭通知
+        closeNotification(notification) {
+            if (!notification || !notification.parentNode) return;
+
+            notification.style.opacity = '0';
+            notification.style.transform = 'translateX(-50%) translateY(-20px)';
+
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+
+                // 重新排列剩余通知
+                const remainingNotifications = this.notificationContainer?.querySelectorAll('.course-notification') || [];
+                remainingNotifications.forEach((remainingNotification, index) => {
+                    remainingNotification.style.top = `${index * 80}px`;
+                });
+
+                // 如果没有通知了，隐藏容器
+                if (remainingNotifications.length === 0 && this.notificationContainer) {
+                    this.notificationContainer.style.pointerEvents = 'none';
+                }
+            }, 300);
+        }
+
+        // 清除所有通知
+        clearAllNotifications() {
+            const notifications = document.querySelectorAll('.course-notification');
+            notifications.forEach(notification => {
+                this.closeNotification(notification);
+            });
         }
     }
 
@@ -925,6 +1217,9 @@
 
             // 添加待恢复数据机制
             this.pendingRestoreData = null;
+
+            // 初始化批量更新处理器
+            this.batchUpdateProcessor = this.createBatchUpdateProcessor();
 
             this.initStorageEventListeners();
             this.initialize();
@@ -960,6 +1255,17 @@
                 // 执行实际UI恢复
                 this.performUIRestore(courses, courseDetails, statusMap);
             });
+
+            // 监听课程UI更新事件
+            document.addEventListener('course:ui-update', (event) => {
+                const { action, courseId, courseType, courseTypeName } = event.detail;
+                console.log(`[选课助手] 接收到课程UI更新事件:`, { action, courseId, courseType, courseTypeName });
+
+                if (action === 'success') {
+                    // 处理选课成功后的UI更新
+                    this.handleCourseUISuccess(courseId, courseType, courseTypeName);
+                }
+            });
         }
 
         // 执行实际UI恢复的方法
@@ -977,8 +1283,13 @@
                 // 清空现有输入框
                 this.container.innerHTML = '';
 
-                // 为每个保存的课程创建输入框
-                courses.forEach((courseId, index) => {
+                // 过滤出未成功的课程，只为它们创建输入框
+                const activeCourses = courses.filter(courseId => !statusMap[courseId]?.success);
+                console.log(`[选课助手] 需要恢复输入框的未成功课程: ${activeCourses.length} 门 (总数: ${courses.length} 门)`);
+
+                // 为每个未成功的课程创建输入框
+                activeCourses.forEach((courseId, index) => {
+                    console.log(`[选课助手] 恢复课程输入框: ${courseId}`);
                     const courseType = this.courseManager.courseTypeMap[courseId] || CONFIG.GRAB.DEFAULT_COURSE_TYPE;
                     const courseInput = this.createCourseInput(index, courseType);
 
@@ -1005,7 +1316,13 @@
                     this.container.appendChild(courseInput);
                 });
 
-                console.log(`[选课助手] 已恢复 ${courses.length} 个课程输入框`);
+                console.log(`[选课助手] 已恢复 ${activeCourses.length} 个未成功课程的输入框`);
+
+                // 记录已跳过的成功课程
+                const successCourses = courses.filter(courseId => statusMap[courseId]?.success);
+                if (successCourses.length > 0) {
+                    console.log(`[选课助手] 已跳过 ${successCourses.length} 门已成功课程: ${successCourses.join(', ')}`);
+                }
             } else {
                 console.warn('[选课助手] 主面板容器不存在，无法恢复输入框');
             }
@@ -1017,6 +1334,42 @@
             this.updateSuccessRecordsFromStorage(courseDetails, statusMap);
 
             console.log('[选课助手] UI恢复完成');
+        }
+
+        // 处理课程选课成功后的UI更新
+        handleCourseUISuccess(courseId, courseType, courseTypeName) {
+            console.log(`[选课助手] 处理选课成功UI更新: ${courseId} [${courseTypeName}]`);
+
+            // 1. 从主面板中移除成功课程的输入框
+            if (this.container) {
+                const courseRows = this.container.children;
+                for (let i = courseRows.length - 1; i >= 0; i--) {
+                    const row = courseRows[i];
+                    const inputs = row.querySelectorAll('input[type="text"]');
+                    if (inputs.length >= 2) {
+                        const rowCourseId = inputs[0].dataset.currentCourseId || inputs[0].value.trim();
+                        if (rowCourseId === courseId) {
+                            console.log(`[选课助手] 从主面板移除成功课程输入框: ${courseId}`);
+                            row.parentElement.removeChild(row);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 2. 更新当前选课课程列表（过滤掉已成功课程）
+            this.updateCurrentCoursesListFromUI();
+
+            // 3. 更新选课成功记录
+            const successRecord = {
+                courseId: courseId,
+                courseType: courseType,
+                timestamp: Date.now()
+            };
+            this.addSuccessRecord(successRecord);
+
+            // 4. 显示成功通知
+            this.courseManager.showNotification(`课程 ${courseId} [${courseTypeName}] 选课成功！已从当前列表移除`, 'success');
         }
 
         initialize() {
@@ -1065,6 +1418,28 @@
             div.style.alignItems = 'center';
             div.style.flexWrap = 'wrap';
 
+            // 创建删除按钮
+            const deleteButton = document.createElement('button');
+            deleteButton.innerHTML = '🗑️';
+            deleteButton.title = '删除该课程';
+            deleteButton.style.cssText = `
+                background: none !important;
+                border: none !important;
+                font-size: 16px !important;
+                cursor: pointer !important;
+                padding: 4px !important;
+                margin-right: 8px !important;
+                border-radius: 3px !important;
+                color: #dc3545 !important;
+                transition: all 0.2s ease !important;
+                min-width: 24px !important;
+                height: 24px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                flex-shrink: 0 !important;
+            `;
+
             // 课程类型选择器
             const courseTypeSelector = this.createCourseTypeSelector(courseType);
 
@@ -1090,15 +1465,64 @@
                 width: 200px;
             `;
 
+            // 添加元素到容器中（删除按钮在最左侧）
+            div.appendChild(deleteButton);
             div.appendChild(courseTypeSelector);
             div.appendChild(inputId);
             div.appendChild(inputName);
+
+            // 课程类型选择框变更事件处理
+            courseTypeSelector.addEventListener('change', () => {
+                const courseId = inputId.dataset.currentCourseId || inputId.value.trim();
+                const selectedCourseType = courseTypeSelector.value;
+
+                if (courseId && this.courseManager.courses.includes(courseId)) {
+                    // 更新课程类型
+                    const oldCourseType = this.courseManager.courseTypeMap[courseId];
+                    this.courseManager.courseTypeMap[courseId] = selectedCourseType;
+                    this.courseManager.statusMap[courseId].courseType = selectedCourseType;
+
+                    // 使用统一的数据更新触发器
+                    this.triggerCourseDataUpdate('type', courseId, {
+                        oldCourseType: oldCourseType,
+                        newCourseType: selectedCourseType,
+                        courseTypeInfo: CONFIG.COURSE_TYPES[selectedCourseType]
+                    });
+
+                    const courseTypeInfo = CONFIG.COURSE_TYPES[selectedCourseType];
+                    this.courseManager.showNotification(`课程 ${courseId} 类型已更新为 [${courseTypeInfo.name}]`, 'success');
+                    console.log(`[选课助手] 课程类型更新: ${courseId} → ${selectedCourseType} (${courseTypeInfo.name})`);
+                }
+            });
+
+            // 实时输入验证
+            inputId.addEventListener('input', () => {
+                const value = inputId.value.trim();
+                const isValid = this.isValidCourseId(value);
+
+                if (value && !isValid) {
+                    // 实时格式验证反馈
+                    inputId.style.borderColor = '#dc3545';
+                    inputId.style.backgroundColor = '#fff5f5';
+
+                    // 显示格式错误提示
+                    this.showInputError(inputId, '课程ID只能包含字母、数字、下划线和连字符');
+                } else {
+                    // 清除错误样式
+                    inputId.style.borderColor = '';
+                    inputId.style.backgroundColor = '';
+                    this.hideInputError(inputId);
+                }
+            });
 
             // 课程添加/更新逻辑
             inputId.addEventListener('blur', () => {
                 const newJxbid = inputId.value.trim();
                 const oldJxbid = inputId.dataset.currentCourseId || '';
                 const selectedCourseType = courseTypeSelector.value;
+
+                // 清除错误提示
+                this.hideInputError(inputId);
 
                 if (newJxbid && this.isValidCourseId(newJxbid)) {
                     if (oldJxbid && oldJxbid !== newJxbid) {
@@ -1108,9 +1532,20 @@
                             inputId.dataset.currentCourseId = newJxbid;
                             const courseTypeInfo = CONFIG.COURSE_TYPES[selectedCourseType];
                             this.courseManager.showNotification(`课程已更新: ${oldJxbid} → ${newJxbid} [${courseTypeInfo.name}]`, 'success');
+
+                            // 实时更新当前课程列表
+                            this.updateCurrentCoursesListFromUI();
                         } else {
                             inputId.value = oldJxbid;
-                            this.courseManager.showNotification(`课程更新失败: ${newJxbid}`, 'error');
+                            this.courseManager.showNotification(`课程更新失败: ${newJxbid}`, 'error', {
+                                action: {
+                                    text: '重试',
+                                    callback: () => {
+                                        inputId.focus();
+                                        inputId.select();
+                                    }
+                                }
+                            });
                         }
                     } else if (!oldJxbid) {
                         // 新增课程情况
@@ -1119,21 +1554,41 @@
                             inputId.dataset.currentCourseId = newJxbid;
                             const courseTypeInfo = CONFIG.COURSE_TYPES[selectedCourseType];
                             this.courseManager.showNotification(`课程 ${newJxbid} 添加成功 [${courseTypeInfo.name}]`, 'success');
+
+                            // 实时更新当前课程列表
+                            this.updateCurrentCoursesListFromUI();
+
+                            // 添加成功动画
+                            this.addSuccessAnimation(inputId);
                         } else {
                             inputId.value = '';
                             inputId.dataset.currentCourseId = '';
-                            this.courseManager.showNotification(`课程 ${newJxbid} 添加失败或已存在`, 'warning');
+                            this.courseManager.showNotification(`课程 ${newJxbid} 添加失败或已存在`, 'warning', {
+                                persistent: true,
+                                action: {
+                                    text: '查看详情',
+                                    callback: () => {
+                                        this.showCourseDetailsDialog(newJxbid);
+                                    }
+                                }
+                            });
                         }
                     }
                 } else if (newJxbid) {
                     this.courseManager.showNotification(`课程ID格式无效: ${newJxbid}`, 'error');
                     inputId.value = oldJxbid || '';
+                    inputId.focus();
                 } else if (oldJxbid) {
                     // 清空输入，删除课程
                     const removed = this.courseManager.removeCourse(oldJxbid);
                     if (removed) {
                         inputId.dataset.currentCourseId = '';
                         this.courseManager.showNotification(`课程 ${oldJxbid} 已删除`, 'info');
+
+                        // 实时更新当前课程列表
+                        this.updateCurrentCoursesListFromUI();
+                    } else {
+                        this.courseManager.showNotification(`删除课程 ${oldJxbid} 失败`, 'error');
                     }
                 }
             });
@@ -1143,6 +1598,94 @@
                 if (e.key === 'Enter') {
                     inputId.blur();
                 }
+            });
+
+            // 课程名称输入框实时保存逻辑（简化版本）
+            let courseNameSaveTimeout;
+            inputName.addEventListener('input', () => {
+                // 清除之前的定时器
+                if (courseNameSaveTimeout) {
+                    clearTimeout(courseNameSaveTimeout);
+                }
+
+                // 设置新的定时器，800ms后保存（给用户更多输入时间）
+                courseNameSaveTimeout = setTimeout(() => {
+                    const courseId = inputId.dataset.currentCourseId || inputId.value.trim();
+                    const courseName = inputName.value.trim();
+
+                    if (courseId && this.courseManager.courses.includes(courseId) && courseName) {
+                        // 直接调用课程管理器的更新方法
+                        this.updateCourseNameDirect(courseId, courseName);
+                    }
+                }, 800);
+            });
+
+            // 课程名称输入框失去焦点时立即保存
+            inputName.addEventListener('blur', () => {
+                // 清除防抖定时器
+                if (courseNameSaveTimeout) {
+                    clearTimeout(courseNameSaveTimeout);
+                    courseNameSaveTimeout = null;
+                }
+
+                // 立即保存
+                const courseId = inputId.dataset.currentCourseId || inputId.value.trim();
+                const courseName = inputName.value.trim();
+
+                if (courseId && this.courseManager.courses.includes(courseId)) {
+                    this.updateCourseNameDirect(courseId, courseName || this.courseManager.localDataManager.DEFAULT_COURSE_NAME);
+                }
+            });
+
+            // 删除按钮事件处理
+            deleteButton.addEventListener('click', () => {
+                const courseId = inputId.dataset.currentCourseId || inputId.value.trim();
+                const courseName = inputName.value.trim();
+
+                if (courseId) {
+                    console.log(`[选课助手] 用户点击删除课程: ${courseId}`);
+
+                    // 从课程管理器中删除课程
+                    const removed = this.courseManager.removeCourse(courseId);
+
+                    if (removed) {
+                        // 从DOM中移除该行
+                        const courseRow = deleteButton.parentElement;
+                        if (courseRow && courseRow.parentElement) {
+                            courseRow.parentElement.removeChild(courseRow);
+                        }
+
+                        // 更新当前选课课程列表
+                        this.updateCurrentCoursesListFromUI();
+
+                        // 显示删除成功通知
+                        const courseTypeName = CONFIG.COURSE_TYPES[courseTypeSelector.value]?.name || '未知类型';
+                        this.courseManager.showNotification(`课程 ${courseName || courseId} [${courseTypeName}] 已删除`, 'info');
+
+                        console.log(`[选课助手] 课程 ${courseId} 删除成功`);
+                    } else {
+                        this.courseManager.showNotification(`课程 ${courseId} 删除失败`, 'error');
+                        console.error(`[选课助手] 课程 ${courseId} 删除失败`);
+                    }
+                } else {
+                    // 如果课程ID为空，直接删除该行
+                    const courseRow = deleteButton.parentElement;
+                    if (courseRow && courseRow.parentElement) {
+                        courseRow.parentElement.removeChild(courseRow);
+                        console.log('[选课助手] 删除了空的课程输入行');
+                    }
+                }
+            });
+
+            // 添加删除按钮悬停效果
+            deleteButton.addEventListener('mouseenter', () => {
+                deleteButton.style.backgroundColor = '#dc3545';
+                deleteButton.style.color = '#ffffff';
+            });
+
+            deleteButton.addEventListener('mouseleave', () => {
+                deleteButton.style.backgroundColor = 'transparent';
+                deleteButton.style.color = '#dc3545';
             });
 
             return div;
@@ -1279,7 +1822,7 @@
             `;
 
             const title = document.createElement('h3');
-            title.textContent = '自动选课工具 v2.0.0';
+            title.textContent = '自动选课工具 V1.1.0';
             title.style.cssText = `
                 margin: 0;
                 color: #333;
@@ -1318,6 +1861,11 @@
                 max-height: 300px;
                 overflow-y: auto;
                 margin-bottom: 15px;
+                flex-shrink: 0;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                padding: 10px;
+                background-color: white;
             `;
 
             // 添加一个默认课程输入框
@@ -1549,6 +2097,9 @@
                 border-radius: 5px;
                 background-color: #f8f9ff;
                 font-size: 12px;
+                max-height: 200px;
+                overflow-y: auto;
+                flex-shrink: 0;
             `;
 
             // 添加标题
@@ -1596,6 +2147,7 @@
                 max-height: 150px;
                 overflow-y: auto;
                 font-size: 12px;
+                flex-shrink: 0;
             `;
 
             // 添加标题
@@ -1621,6 +2173,11 @@
             this.updateRecordsList([]);
 
             this.panel.appendChild(this.successRecordsContainer);
+
+            // 添加作者信息底部区域
+            this.createAuthorFooter();
+
+            this.panel.appendChild(this.authorFooter);
         }
 
         addSuccessRecord(courseData) {
@@ -1729,8 +2286,82 @@
             });
         }
 
+        createAuthorFooter() {
+            this.authorFooter = document.createElement('div');
+            this.authorFooter.style.cssText = `
+                margin-top: 10px;
+                padding: 8px 12px;
+                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                border-radius: 8px;
+                border: 1px solid #dee2e6;
+                font-size: 11px;
+                color: #495057;
+                line-height: 1.4;
+                text-align: center;
+            `;
+
+            this.authorFooter.innerHTML = `
+                <div style="margin-bottom: 4px; font-weight: bold; color: #007bff;">
+                    📝 SCMU自动选课助手 V1.1.0
+                </div>
+                <div style="margin-bottom: 3px;">
+                    <span style="color: #6c757d;">作者：</span>
+                    <a href="https://github.com/SuShuHeng" target="_blank" style="color: #007bff; text-decoration: none; font-weight: 500;">SuShuHeng</a>
+                </div>
+                <div style="margin-bottom: 3px;">
+                    <span style="color: #6c757d;">项目：</span>
+                    <a href="https://github.com/SuShuHeng/SCMU_CC_Helper" target="_blank" style="color: #007bff; text-decoration: none;">GitHub仓库</a>
+                    <span style="color: #28a745; margin-left: 4px;">(Apache 2.0)</span>
+                </div>
+                <div style="color: #dc3545; font-weight: bold; font-size: 10px; margin-top: 4px;">
+                    ⚠️ 本项目仅用于学习，禁止用于盈利！
+                </div>
+            `;
+        }
+
         clearSuccessRecords() {
             this.updateRecordsList([]);
+        }
+
+        updateCurrentCoursesListFromUI() {
+            // 从UI容器中收集当前的课程信息
+            const courses = [];
+            const courseDetails = [];
+            const statusMap = {};
+
+            if (this.container) {
+                const courseRows = this.container.children;
+                for (let i = 0; i < courseRows.length; i++) {
+                    const row = courseRows[i];
+                    const inputs = row.querySelectorAll('input[type="text"]');
+                    const courseTypeSelector = row.querySelector('select');
+
+                    if (inputs.length >= 2) {
+                        const courseId = inputs[0].dataset.currentCourseId || inputs[0].value.trim();
+                        const courseName = inputs[1].value.trim();
+                        const courseType = courseTypeSelector ? courseTypeSelector.value : CONFIG.GRAB.DEFAULT_COURSE_TYPE;
+
+                        // 只收集未成功的课程信息
+                        if (courseId && !this.courseManager.statusMap[courseId]?.success) {
+                            courses.push(courseId);
+                            courseDetails.push({
+                                id: courseId,
+                                name: courseName || this.courseManager.localDataManager.DEFAULT_COURSE_NAME,
+                                addedTime: Date.now()
+                            });
+                            statusMap[courseId] = this.courseManager.statusMap[courseId] || {
+                                success: false,
+                                glReady: false
+                            };
+                        } else if (courseId && this.courseManager.statusMap[courseId]?.success) {
+                            console.log(`[选课助手] 跳过已成功的课程: ${courseId}`);
+                        }
+                    }
+                }
+            }
+
+            // 调用现有的更新方法
+            this.updateCurrentCoursesList(courses, courseDetails, statusMap);
         }
 
         updateCurrentCoursesList(courses, courseDetails, statusMap) {
@@ -1747,91 +2378,258 @@
                 return;
             }
 
-            // 清空现有内容
-            this.currentCoursesList.innerHTML = '';
+            // 获取当前列表项数量用于动画效果
+            const currentItemCount = this.currentCoursesList.children.length;
 
+            // 过滤出未成功的课程
+            const activeCourses = courses ? courses.filter(courseId => !statusMap[courseId]?.success) : [];
+            console.log(`[选课助手] 过滤后需要显示的未成功课程: ${activeCourses.length} 门 (总数: ${courses?.length || 0} 门)`);
+
+            // 如果没有课程数据，显示空状态
             if (!courses || courses.length === 0) {
-                console.log('[选课助手] 没有课程数据，显示空状态');
-                const emptyState = document.createElement('div');
-                emptyState.textContent = '暂无课程数据';
-                emptyState.style.cssText = `
-                    color: #6c757d;
-                    font-style: italic;
-                `;
-                this.currentCoursesList.appendChild(emptyState);
+                this.showEmptyState();
                 return;
             }
 
-            console.log(`[选课助手] 开始创建 ${courses.length} 个课程项目`);
+            // 如果没有未成功的课程，显示成功状态
+            if (activeCourses.length === 0) {
+                this.showAllCoursesSuccessState(courses);
+                return;
+            }
 
-            // 创建课程列表
-            courses.forEach((courseId, index) => {
-                console.log(`[选课助手] 处理课程 ${index + 1}: ${courseId}`);
+            // 使用DocumentFragment进行批量DOM操作，提升性能
+            const fragment = document.createDocumentFragment();
 
-                const courseDetail = courseDetails.find(detail => detail.id === courseId);
-                const courseType = this.courseManager.courseTypeMap[courseId] || CONFIG.GRAB.DEFAULT_COURSE_TYPE;
-                const courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
-                const status = statusMap[courseId] || {};
-
-                console.log(`[选课助手] 课程 ${courseId} 信息:`, {
-                    detail: courseDetail,
-                    type: courseType,
-                    typeInfo: courseTypeInfo,
-                    status: status
-                });
-
-                const courseItem = document.createElement('div');
-                courseItem.style.cssText = `
-                    margin-bottom: 8px;
-                    padding: 6px 8px;
-                    background: white;
-                    border-radius: 4px;
-                    border-left: 3px solid #007bff;
-                `;
-
-                const courseIdElement = document.createElement('div');
-                courseIdElement.style.cssText = `
-                    font-weight: bold;
-                    color: #333;
-                    font-size: 13px;
-                `;
-                courseIdElement.textContent = `${index + 1}. ${courseId}`;
-
-                const courseTypeInfoElement = document.createElement('div');
-                courseTypeInfoElement.style.cssText = `
-                    color: #666;
-                    font-size: 11px;
-                    margin-top: 2px;
-                `;
-                courseTypeInfoElement.textContent = `类型: ${courseTypeInfo.name}`;
-
-                const courseNameElement = document.createElement('div');
-                courseNameElement.style.cssText = `
-                    color: #888;
-                    font-size: 11px;
-                    font-style: ${courseDetail?.name === this.courseManager.localDataManager.DEFAULT_COURSE_NAME ? 'italic' : 'normal'};
-                    margin-top: 2px;
-                `;
-                courseNameElement.textContent = `名称: ${courseDetail?.name || '未设置'}`;
-
-                const statusElement = document.createElement('div');
-                statusElement.style.cssText = `
-                    color: ${status.success ? '#28a745' : '#6c757d'};
-                    font-size: 11px;
-                    margin-top: 2px;
-                    font-weight: ${status.success ? 'bold' : 'normal'};
-                `;
-                statusElement.textContent = `状态: ${status.success ? '✅ 已选上' : '⏳ 等待中'}`;
-
-                courseItem.appendChild(courseIdElement);
-                courseItem.appendChild(courseTypeInfoElement);
-                courseItem.appendChild(courseNameElement);
-                courseItem.appendChild(statusElement);
-
-                this.currentCoursesList.appendChild(courseItem);
+            // 创建课程列表 - 只显示未成功的课程
+            activeCourses.forEach((courseId, index) => {
+                const courseItem = this.createCourseListItem(courseId, courseDetails, index);
+                fragment.appendChild(courseItem);
             });
 
-            console.log(`[选课助手] 当前课程列表已更新，共 ${courses.length} 门课程`);
+            // 添加动画效果
+            if (currentItemCount === 0) {
+                // 首次加载，淡入效果
+                this.currentCoursesList.style.opacity = '0';
+                this.currentCoursesList.innerHTML = '';
+                this.currentCoursesList.appendChild(fragment);
+
+                setTimeout(() => {
+                    this.currentCoursesList.style.transition = 'opacity 0.3s ease-in';
+                    this.currentCoursesList.style.opacity = '1';
+                }, 50);
+            } else {
+                // 更新现有内容，带过渡效果
+                this.updateListWithAnimation(fragment);
+            }
+
+            console.log(`[选课助手] 当前课程列表已更新，共 ${activeCourses.length} 门未成功课程 (总数: ${courses.length} 门)`);
+        }
+
+        // 显示空状态
+        showEmptyState() {
+            this.currentCoursesList.innerHTML = '';
+            const emptyState = document.createElement('div');
+            emptyState.textContent = '暂无课程数据';
+            emptyState.style.cssText = `
+                color: #6c757d;
+                font-style: italic;
+                text-align: center;
+                padding: 20px;
+                opacity: 0;
+                transition: opacity 0.3s ease-in;
+            `;
+            this.currentCoursesList.appendChild(emptyState);
+
+            setTimeout(() => {
+                emptyState.style.opacity = '1';
+            }, 50);
+        }
+
+        // 显示所有课程成功状态
+        showAllCoursesSuccessState(courses) {
+            this.currentCoursesList.innerHTML = '';
+            const successState = document.createElement('div');
+            successState.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: #28a745;">
+                    <div style="font-size: 16px; margin-bottom: 5px;">🎉</div>
+                    <div style="font-weight: bold; margin-bottom: 5px;">所有课程已成功选课！</div>
+                    <div style="font-size: 12px; color: #666;">共 ${courses.length} 门课程已选课成功</div>
+                </div>
+            `;
+            successState.style.cssText = `
+                opacity: 0;
+                transition: opacity 0.3s ease-in;
+            `;
+            this.currentCoursesList.appendChild(successState);
+
+            setTimeout(() => {
+                successState.style.opacity = '1';
+            }, 50);
+        }
+
+        // 创建课程列表项
+        createCourseListItem(courseId, courseDetails, index) {
+            const courseDetail = courseDetails?.find(detail => detail.id === courseId);
+            const courseType = this.courseManager.courseTypeMap[courseId] || CONFIG.GRAB.DEFAULT_COURSE_TYPE;
+            const courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
+            const status = this.courseManager.statusMap[courseId] || {};
+
+            console.log(`[选课助手] 创建课程列表项: ${courseId}`, {
+                detail: courseDetail,
+                type: courseType,
+                typeInfo: courseTypeInfo,
+                status: status
+            });
+
+            const courseItem = document.createElement('div');
+            courseItem.style.cssText = `
+                margin-bottom: 8px;
+                padding: 8px 12px;
+                background: white;
+                border-radius: 6px;
+                border-left: 4px solid #007bff;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                transition: all 0.2s ease;
+                transform: translateY(5px);
+                opacity: 0;
+            `;
+
+            // 添加悬停效果
+            courseItem.addEventListener('mouseenter', () => {
+                courseItem.style.boxShadow = '0 2px 6px rgba(0,0,0,0.15)';
+                courseItem.style.transform = 'translateY(-2px)';
+            });
+
+            courseItem.addEventListener('mouseleave', () => {
+                courseItem.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+                courseItem.style.transform = 'translateY(0)';
+            });
+
+            const courseIdElement = document.createElement('div');
+            courseIdElement.style.cssText = `
+                font-weight: bold;
+                color: #333;
+                font-size: 14px;
+                display: flex;
+                align-items: center;
+            `;
+            courseIdElement.innerHTML = `
+                <span style="margin-right: 6px;">${index + 1}.</span>
+                <span>${courseId}</span>
+                <span style="margin-left: 8px; font-size: 10px; background: #007bff; color: white; padding: 2px 6px; border-radius: 3px;">ID</span>
+            `;
+
+            const courseTypeInfoElement = document.createElement('div');
+            courseTypeInfoElement.style.cssText = `
+                color: #666;
+                font-size: 12px;
+                margin-top: 4px;
+                display: flex;
+                align-items: center;
+            `;
+            courseTypeInfoElement.innerHTML = `
+                <span style="margin-right: 4px;">📚</span>
+                <span>类型: ${courseTypeInfo.name}</span>
+                <span style="margin-left: 8px; font-size: 10px; background: ${this.getCourseTypeColor(courseType)}; color: white; padding: 1px 4px; border-radius: 2px;">${courseType}</span>
+            `;
+
+            const courseNameElement = document.createElement('div');
+            const displayName = courseDetail?.name || '未设置';
+            const isDefaultName = courseDetail?.name === this.courseManager.localDataManager.DEFAULT_COURSE_NAME;
+            courseNameElement.style.cssText = `
+                color: ${isDefaultName ? '#999' : '#555'};
+                font-size: 12px;
+                font-style: ${isDefaultName ? 'italic' : 'normal'};
+                margin-top: 3px;
+                display: flex;
+                align-items: center;
+            `;
+            courseNameElement.innerHTML = `
+                <span style="margin-right: 4px;">📝</span>
+                <span>${isDefaultName ? '名称: 未设置' : displayName}</span>
+            `;
+
+            const statusElement = document.createElement('div');
+            statusElement.style.cssText = `
+                color: #ff9800;
+                font-size: 11px;
+                margin-top: 4px;
+                font-weight: normal;
+                display: flex;
+                align-items: center;
+            `;
+            statusElement.innerHTML = `
+                <span style="margin-right: 4px;">⏳</span>
+                <span>状态: 等待选课中</span>
+                ${status.glReady ? '<span style="margin-left: 8px; color: #28a745;">✓ 已就绪</span>' : '<span style="margin-left: 8px; color: #666;">加载中...</span>'}
+            `;
+
+            courseItem.appendChild(courseIdElement);
+            courseItem.appendChild(courseTypeInfoElement);
+            courseItem.appendChild(courseNameElement);
+            courseItem.appendChild(statusElement);
+
+            // 动画延迟进入
+            setTimeout(() => {
+                courseItem.style.transform = 'translateY(0)';
+                courseItem.style.opacity = '1';
+            }, index * 50);
+
+            return courseItem;
+        }
+
+        // 获取课程类型对应的颜色
+        getCourseTypeColor(courseType) {
+            const colorMap = {
+                'TJXK': '#28a745',   // 推荐选课 - 绿色
+                'BFAK': '#007bff',   // 方案内选课 - 蓝色
+                'KZYXK': '#ffc107',  // 方案外选课 - 黄色
+                'CXXK': '#dc3545',   // 重修选课 - 红色
+                'TYKXK': '#17a2b8',  // 体育选择课 - 青色
+                'QXGXK': '#6610f2',  // 通识课程选修 - 紫色
+                'CXCY': '#fd7e14'    // 创新创业类选修课 - 橙色
+            };
+            return colorMap[courseType] || '#6c757d';
+        }
+
+        // 带动画效果的列表更新
+        updateListWithAnimation(fragment) {
+            const currentItems = this.currentCoursesList.children;
+
+            // 淡出现有项
+            if (currentItems.length > 0) {
+                Array.from(currentItems).forEach((item, index) => {
+                    setTimeout(() => {
+                        item.style.opacity = '0';
+                        item.style.transform = 'translateY(10px)';
+                    }, index * 30);
+                });
+
+                // 淡入新项
+                setTimeout(() => {
+                    this.currentCoursesList.innerHTML = '';
+                    this.currentCoursesList.appendChild(fragment);
+
+                    // 为新项添加进入动画
+                    Array.from(this.currentCoursesList.children).forEach((item, index) => {
+                        setTimeout(() => {
+                            item.style.transform = 'translateY(0)';
+                            item.style.opacity = '1';
+                        }, index * 50);
+                    });
+                }, currentItems.length * 30 + 200);
+            } else {
+                // 直接添加新内容
+                this.currentCoursesList.innerHTML = '';
+                this.currentCoursesList.appendChild(fragment);
+
+                Array.from(this.currentCoursesList.children).forEach((item, index) => {
+                    setTimeout(() => {
+                        item.style.transform = 'translateY(0)';
+                        item.style.opacity = '1';
+                    }, index * 50);
+                });
+            }
         }
 
         updateSuccessRecordsFromStorage(courseDetails, statusMap) {
@@ -1998,7 +2796,7 @@
             });
         }
 
-        updateButtonStyles() {
+      updateButtonStyles() {
             // 更新开始选课按钮样式
             if (this.startButton) {
                 if (this.startButton.disabled) {
@@ -2027,13 +2825,359 @@
                 }
             }
         }
+
+        // 直接更新课程名称的方法（简化版）
+        updateCourseNameDirect(courseId, courseName) {
+            if (!courseId) {
+                console.warn('[选课助手] 更新课程名称失败：课程ID为空');
+                return;
+            }
+
+            if (!this.courseManager.courses.includes(courseId)) {
+                console.warn(`[选课助手] 更新课程名称失败：课程 ${courseId} 不存在`);
+                return;
+            }
+
+            try {
+                // 更新内存中的课程名称映射
+                this.courseManager.courseNameMap[courseId] = courseName;
+
+                // 使用LocalDataManager的专门方法更新课程名称
+                const success = this.courseManager.localDataManager.updateCourseName(courseId, courseName);
+
+                if (success) {
+                    console.log(`[选课助手] 课程名称已直接更新: ${courseId} → "${courseName}"`);
+
+                    // 更新当前课程列表
+                    this.updateCurrentCoursesListFromUI();
+
+                    // 显示成功提示（仅在名称不为空时显示）
+                    if (courseName && courseName !== this.courseManager.localDataManager.DEFAULT_COURSE_NAME) {
+                        this.courseManager.showNotification(`课程名称已更新: ${courseId}`, 'success');
+                    }
+                } else {
+                    console.error(`[选课助手] 课程名称更新失败: ${courseId}`);
+                }
+            } catch (error) {
+                console.error(`[选课助手] 更新课程名称时发生错误:`, error);
+                this.courseManager.showNotification(`更新课程名称失败`, 'error');
+            }
+        }
+
+        // 保存课程名称的方法（兼容旧版本）
+        saveCourseName(inputNameElement, inputIdElement) {
+            const courseId = inputIdElement.dataset.currentCourseId || inputIdElement.value.trim();
+            const courseName = inputNameElement.value.trim();
+
+            if (!courseId) {
+                console.warn('[选课助手] 保存课程名称失败：课程ID为空');
+                return;
+            }
+
+            if (!this.courseManager.courses.includes(courseId)) {
+                console.warn(`[选课助手] 保存课程名称失败：课程 ${courseId} 不存在`);
+                return;
+            }
+
+            // 直接调用新的方法
+            this.updateCourseNameDirect(courseId, courseName || this.courseManager.localDataManager.DEFAULT_COURSE_NAME);
+        }
+
+        // 统一的数据更新触发器机制
+        triggerCourseDataUpdate(updateType, courseId, updateData = {}) {
+            try {
+                console.log(`[选课助手] 触发数据更新: ${updateType} - 课程 ${courseId}`, updateData);
+
+                // 1. 保存数据到本地存储
+                const saveSuccess = this.courseManager.saveCurrentData();
+                if (!saveSuccess) {
+                    console.error(`[选课助手] 数据保存失败: ${courseId}`);
+                    return false;
+                }
+
+                // 2. 更新UI显示
+                this.updateCurrentCoursesListFromUI();
+
+                // 3. 触发全局数据更新事件（供其他组件监听）
+                const updateEvent = new CustomEvent('course:data-updated', {
+                    detail: {
+                        updateType: updateType,
+                        courseId: courseId,
+                        timestamp: Date.now(),
+                        ...updateData
+                    }
+                });
+                document.dispatchEvent(updateEvent);
+
+                console.log(`[选课助手] 数据更新完成: ${updateType} - ${courseId}`);
+                return true;
+
+            } catch (error) {
+                console.error(`[选课助手] 数据更新触发器失败:`, error);
+                return false;
+            }
+        }
+
+        // 批量数据更新处理器（用于处理多个同时更新的情况）
+        createBatchUpdateProcessor() {
+            let pendingUpdates = new Map();
+            let batchTimeout = null;
+
+            return (updateType, courseId, updateData = {}) => {
+                // 将更新添加到待处理队列
+                const key = `${courseId}:${updateType}`;
+                pendingUpdates.set(key, {
+                    updateType,
+                    courseId,
+                    updateData: { ...pendingUpdates.get(key)?.updateData, ...updateData },
+                    timestamp: Date.now()
+                });
+
+                // 清除之前的批量处理定时器
+                if (batchTimeout) {
+                    clearTimeout(batchTimeout);
+                }
+
+                // 设置新的批量处理定时器（200ms后执行）
+                batchTimeout = setTimeout(() => {
+                    if (pendingUpdates.size > 0) {
+                        console.log(`[选课助手] 批量处理 ${pendingUpdates.size} 个数据更新`);
+
+                        // 执行所有待处理的更新
+                        for (const [key, update] of pendingUpdates) {
+                            if (update.updateType === 'name' && update.updateData.inputElement && update.updateData.idElement) {
+                                // 特殊处理课程名称更新
+                                this.saveCourseName(update.updateData.inputElement, update.updateData.idElement);
+                            } else {
+                                // 其他类型的更新
+                                this.triggerCourseDataUpdate(update.updateType, update.courseId, update.updateData);
+                            }
+                        }
+
+                        // 清空待处理队列
+                        pendingUpdates.clear();
+                        batchTimeout = null;
+                    }
+                }, 200);
+            };
+        }
+
+        // 显示输入错误提示
+        showInputError(inputElement, message) {
+            // 移除已存在的错误提示
+            this.hideInputError(inputElement);
+
+            const errorElement = document.createElement('div');
+            errorElement.className = 'input-error-tooltip';
+            errorElement.textContent = message;
+            errorElement.style.cssText = `
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: #dc3545;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 3px;
+                font-size: 11px;
+                z-index: ${CONFIG.Z_INDEX.DIALOG};
+                margin-top: 2px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+                opacity: 0;
+                transform: translateY(-5px);
+                transition: all 0.2s ease;
+                pointer-events: none;
+            `;
+
+            // 确保父元素是相对定位的
+            const parent = inputElement.parentElement;
+            if (parent.style.position !== 'relative') {
+                parent.style.position = 'relative';
+            }
+
+            parent.appendChild(errorElement);
+
+            // 显示动画
+            setTimeout(() => {
+                errorElement.style.opacity = '1';
+                errorElement.style.transform = 'translateY(0)';
+            }, 10);
+        }
+
+        // 隐藏输入错误提示
+        hideInputError(inputElement) {
+            const parent = inputElement.parentElement;
+            const existingError = parent.querySelector('.input-error-tooltip');
+            if (existingError) {
+                existingError.style.opacity = '0';
+                existingError.style.transform = 'translateY(-5px)';
+                setTimeout(() => {
+                    if (existingError.parentNode) {
+                        existingError.parentNode.removeChild(existingError);
+                    }
+                }, 200);
+            }
+        }
+
+        // 添加成功动画
+        addSuccessAnimation(inputElement) {
+            const originalBorder = inputElement.style.borderColor;
+            const originalBackground = inputElement.style.backgroundColor;
+
+            // 绿色闪烁效果
+            inputElement.style.borderColor = '#28a745';
+            inputElement.style.backgroundColor = '#f8fff9';
+            inputElement.style.transition = 'all 0.3s ease';
+
+            setTimeout(() => {
+                inputElement.style.borderColor = originalBorder;
+                inputElement.style.backgroundColor = originalBackground;
+            }, 800);
+
+            // 添加勾选标记动画
+            const checkMark = document.createElement('div');
+            checkMark.innerHTML = '✓';
+            checkMark.style.cssText = `
+                position: absolute;
+                top: 50%;
+                right: 10px;
+                transform: translateY(-50%) scale(0);
+                color: #28a745;
+                font-size: 18px;
+                font-weight: bold;
+                z-index: 1;
+                transition: transform 0.3s ease;
+            `;
+
+            const parent = inputElement.parentElement;
+            if (parent.style.position !== 'relative') {
+                parent.style.position = 'relative';
+            }
+
+            parent.appendChild(checkMark);
+
+            setTimeout(() => {
+                checkMark.style.transform = 'translateY(-50%) scale(1)';
+            }, 100);
+
+            setTimeout(() => {
+                checkMark.style.transform = 'translateY(-50%) scale(0)';
+                setTimeout(() => {
+                    if (checkMark.parentNode) {
+                        checkMark.parentNode.removeChild(checkMark);
+                    }
+                }, 300);
+            }, 1500);
+        }
+
+        // 显示课程详情对话框
+        showCourseDetailsDialog(courseId) {
+            // 创建遮罩层
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                z-index: ${CONFIG.Z_INDEX.OVERLAY};
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+            `;
+
+            // 创建对话框
+            const dialog = document.createElement('div');
+            dialog.style.cssText = `
+                background: white;
+                border-radius: 8px;
+                padding: 20px;
+                max-width: 400px;
+                width: 90%;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                transform: scale(0.9);
+                transition: transform 0.3s ease;
+            `;
+
+            const courseType = this.courseManager.courseTypeMap[courseId] || CONFIG.GRAB.DEFAULT_COURSE_TYPE;
+            const courseTypeInfo = CONFIG.COURSE_TYPES[courseType];
+            const status = this.courseManager.statusMap[courseId] || {};
+
+            dialog.innerHTML = `
+                <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">课程详情</h3>
+                <div style="margin-bottom: 10px;"><strong>课程ID:</strong> ${courseId}</div>
+                <div style="margin-bottom: 10px;"><strong>课程类型:</strong> ${courseTypeInfo.name}</div>
+                <div style="margin-bottom: 10px;"><strong>状态:</strong> ${status.success ? '✅ 已选课成功' : '⏳ 等待选课中'}</div>
+                <div style="margin-bottom: 10px;"><strong>实验班数量:</strong> ${this.courseManager.glJxbidMap[courseId]?.length || 0} 个</div>
+                <div style="margin-bottom: 20px; color: #666; font-size: 12px;">
+                    ${status.success ? '该课程已成功选课，无需重复添加。' : '该课程可能已存在于列表中，请检查输入或选择其他课程。'}
+                </div>
+                <div style="text-align: right;">
+                    <button id="dialog-close" style="
+                        padding: 8px 16px;
+                        background: #007bff;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 14px;
+                    ">确定</button>
+                </div>
+            `;
+
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+
+            // 显示动画
+            setTimeout(() => {
+                overlay.style.opacity = '1';
+                dialog.style.transform = 'scale(1)';
+            }, 10);
+
+            // 关闭事件
+            const closeDialog = () => {
+                overlay.style.opacity = '0';
+                dialog.style.transform = 'scale(0.9)';
+                setTimeout(() => {
+                    if (overlay.parentNode) {
+                        overlay.parentNode.removeChild(overlay);
+                    }
+                }, 300);
+            };
+
+            document.getElementById('dialog-close').addEventListener('click', closeDialog);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    closeDialog();
+                }
+            });
+
+            // ESC键关闭
+            const escHandler = (e) => {
+                if (e.key === 'Escape') {
+                    closeDialog();
+                    document.removeEventListener('keydown', escHandler);
+                }
+            };
+            document.addEventListener('keydown', escHandler);
+        }
     }
 
     // ==================== 初始化 ====================
-    console.log('%c🎓 中南民族大学自动选课助手 v2.1.0', 'color: #007bff; font-size: 16px; font-weight: bold;');
+    console.log('%c🎓 中南民族大学自动选课助手 V1.1.0', 'color: #007bff; font-size: 16px; font-weight: bold;');
     console.log('%c✨ 现已支持7种课程类型：推荐选课、方案内选课、方案外选课、重修选课、体育选择课、通识课程选修、创新创业类选修课', 'color: #28a745; font-size: 12px;');
     console.log('%c💾 自动保存课程数据，支持持久化存储，完善UI恢复', 'color: #17a2b8; font-size: 12px;');
     console.log('%c⚠️ 本工具仅供学习交流使用，请遵守学校相关规定', 'color: #ffc107; font-size: 12px;');
+    console.log('');
+    console.log('%c📜 版权信息：', 'color: #6f42c1; font-size: 14px; font-weight: bold;');
+    console.log('%c作者: SuShuHeng (https://github.com/SuShuHeng)', 'color: #6c757d; font-size: 11px;');
+    console.log('%c项目仓库: https://github.com/SuShuHeng/SCMU_CC_Helper', 'color: #6c757d; font-size: 11px;');
+    console.log('%c开源协议: Apache 2.0 License', 'color: #6c757d; font-size: 11px;');
+    console.log('%c⚠️ 本项目仅用于学习，禁止用于盈利！', 'color: #dc3545; font-size: 11px; font-weight: bold;');
+    console.log('');
 
     // 首先创建CourseManager，但不立即加载数据
     const courseManager = new CourseRegistrationManager();
