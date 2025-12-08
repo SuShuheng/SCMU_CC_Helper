@@ -327,7 +327,7 @@ fetch('https://xk.webvpn.scuec.edu.cn/xsxk/')
 
 // 3. 检查课程ID格式
 courseManager.courses.forEach(courseId => {
-    console.log('课程ID:', courseId, '格式正确:', /^\d{8,12}$/.test(courseId));
+    console.log('课程ID:', courseId, '格式正确:', /^[A-Za-z0-9_-]+$/.test(courseId));
 });
 
 // 4. 手动测试API
@@ -574,7 +574,7 @@ window.addEventListener('unhandledrejection', (event) => {
 - [ ] 浏览器控制台没有错误
 
 #### ✅ 功能检查
-- [ ] 课程ID格式正确（8-12位数字）
+- [ ] 课程ID格式正确（字母、数字、下划线、连字符组合）
 - [ ] 课程存在且可选
 - [ ] 存储功能可用
 

@@ -597,13 +597,8 @@ class UIController {
 
         const trimmedId = courseId.trim();
 
-        // 检查长度（课程ID支持6-20位字母和数字组合）
-        if (trimmedId.length < 6 || trimmedId.length > 20) {
-            return false;
-        }
-
-        // 检查是否为字母和数字组合（支持大小写字母和数字）
-        return /^[A-Za-z0-9]+$/.test(trimmedId);
+        // 检查是否为字母、数字、下划线和连字符组合（支持大小写字母、数字、下划线和连字符）
+        return /^[A-Za-z0-9_-]+$/.test(trimmedId);
     }
 
     /**

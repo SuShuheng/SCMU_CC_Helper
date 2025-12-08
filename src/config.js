@@ -49,18 +49,12 @@ export const GRAB_CONFIG = {
 
 // 课程ID验证配置
 export const COURSE_ID_CONFIG = {
-    // 最小长度
-    MIN_LENGTH: 6,
-    // 最大长度
-    MAX_LENGTH: 20,
-    // 验证正则表达式（支持大小写字母和数字）
-    VALIDATION_REGEX: /^[A-Za-z0-9]+$/,
+    // 验证正则表达式（支持大小写字母、数字、下划线和连字符）
+    VALIDATION_REGEX: /^[A-Za-z0-9_-]+$/,
     // 错误提示信息
     ERROR_MESSAGES: {
         EMPTY: '课程ID不能为空',
-        TOO_SHORT: `课程ID长度不能少于${6}位`,
-        TOO_LONG: `课程ID长度不能超过${20}位`,
-        INVALID_FORMAT: '课程ID只能包含字母和数字'
+        INVALID_FORMAT: '课程ID只能包含字母、数字、下划线和连字符'
     }
 };
 

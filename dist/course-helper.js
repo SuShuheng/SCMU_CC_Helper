@@ -1076,11 +1076,7 @@
 
             const trimmedId = courseId.trim();
 
-            if (trimmedId.length < 6 || trimmedId.length > 20) {
-                return false;
-            }
-
-            return /^[A-Za-z0-9]+$/.test(trimmedId);
+            return /^[A-Za-z0-9_-]+$/.test(trimmedId);
         }
 
         makeDraggable(element, handle = null) {
