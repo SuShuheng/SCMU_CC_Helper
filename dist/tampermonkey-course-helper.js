@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         SCMU自动选课助手
 // @namespace    https://github.com/sushuheng/SCMU_CC_Helper
-// @version      V1.1.0
-// @description  专为中南民族大学学生设计的自动化课程注册助手，支持7种选课类型，完整UI优化和数据持久化
+// @version      V1.1.1
+// @description  专为中南民族大学学生设计的自动化课程注册助手，支持校园网/VPN访问，修复课程名保存，优化面板高度控制
 // @author       SuShuHeng <https://github.com/sushuheng>
 // @license      APACHE 2.0
 // @match        https://xk.webvpn.scuec.edu.cn/xsxk/*
 // @match        https://xk.webvpn.scuec.edu.cn/*
+// @match        http://xk.scuec.edu.cn/xsxk/*
+// @match        http://xk.scuec.edu.cn/xsxk/logout.xk
 // @run-at       document-idle
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -15,13 +17,13 @@
 // ==/UserScript==
 
 /**
- * 中南民族大学自动选课助手 V1.1.0
- * 油猴脚本版本 - 支持7种课程类型的完整选课功能，优化UI体验和数据持久化
+ * 中南民族大学自动选课助手 V1.1.1
+ * 油猴脚本版本 - 支持校园网/VPN访问，修复课程名保存，优化面板高度控制
  *
  * @file         tampermonkey-course-helper.js
  * @author       SuShuHeng <https://github.com/sushuheng>
  * @license      APACHE 2.0
- * @version      V1.1.0
+ * @version      V1.1.1
  * @description   专为中南民族大学学生设计的自动化课程注册助手，支持所有选课类型，包含完整UI优化和数据持久化功能
  * @keywords     选课助手, SCMU, 中南民族大学, 自动选课, 课程注册
  *
@@ -374,10 +376,28 @@
 
     const CONFIG = {
         API: {
-            BASE_URL: 'https://xk.webvpn.scuec.edu.cn/xsxk',
+            // V1.1.1: 支持校园网和VPN访问
+            VPN_BASE_URL: 'https://xk.webvpn.scuec.edu.cn/xsxk',
+            CAMPUS_BASE_URL: 'http://xk.scuec.edu.cn/xsxk',
+            get BASE_URL() {
+                return this.detectNetworkEnvironment();
+            },
             ENDPOINTS: {
                 GET_EXPERIMENTAL_CLASS: '/loadData.xk?method=getGljxb&jxbid=',
                 COURSE_OPERATION: '/xkOper.xk?method='
+            },
+            // V1.1.1: 检测网络环境并返回对应的基础URL
+            detectNetworkEnvironment() {
+                const currentHost = window.location.hostname;
+                const currentProtocol = window.location.protocol;
+
+                // 校园网内部访问检测
+                if (currentHost === 'xk.scuec.edu.cn' || currentHost.includes('scuec.edu.cn')) {
+                    return currentProtocol === 'http:' ? this.CAMPUS_BASE_URL : this.CAMPUS_BASE_URL.replace('http://', 'https://');
+                }
+
+                // VPN公网访问（默认）
+                return this.VPN_BASE_URL;
             }
         },
         COURSE_TYPES: COURSE_TYPES,
@@ -408,11 +428,26 @@
                 fontSize: '16px',
                 borderRadius: '10px',
                 boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                height: '800px',
+                // V1.1.1: 移除固定高度，改为动态调整
+                minHeight: '500px',
+                maxHeight: '800px',
                 overflowY: 'auto',
                 overflowX: 'hidden',
                 display: 'flex',
                 flexDirection: 'column'
+            },
+            // V1.1.1: 动态面板高度配置
+            PANEL_HEIGHT: {
+                MIN_HEIGHT: 500,
+                MAX_HEIGHT: 800,
+                BASE_HEIGHT: 150,
+                COURSE_ITEM_HEIGHT: 60,
+                SCROLL_THRESHOLD: 6
+            },
+            SCROLLABLE_CONTAINER: {
+                MAX_COURSES_BEFORE_SCROLL: 4,
+                CONTAINER_HEIGHT: 'auto',
+                SCROLLBAR_WIDTH: '8px'
             },
             FLOATING_BUTTON: {
                 width: '60px',
@@ -1218,6 +1253,9 @@
             // 添加待恢复数据机制
             this.pendingRestoreData = null;
 
+            // V1.1.1: 添加课程名保存防抖定时器映射
+            this.courseNameSaveTimers = new Map();
+
             // 初始化批量更新处理器
             this.batchUpdateProcessor = this.createBatchUpdateProcessor();
 
@@ -1822,7 +1860,7 @@
             `;
 
             const title = document.createElement('h3');
-            title.textContent = '自动选课工具 V1.1.0';
+            title.textContent = '自动选课工具 V1.1.1';
             title.style.cssText = `
                 margin: 0;
                 color: #333;
@@ -2302,7 +2340,7 @@
 
             this.authorFooter.innerHTML = `
                 <div style="margin-bottom: 4px; font-weight: bold; color: #007bff;">
-                    📝 SCMU自动选课助手 V1.1.0
+                    📝 SCMU自动选课助手 V1.1.1
                 </div>
                 <div style="margin-bottom: 3px;">
                     <span style="color: #6c757d;">作者：</span>
@@ -3167,7 +3205,7 @@
     }
 
     // ==================== 初始化 ====================
-    console.log('%c🎓 中南民族大学自动选课助手 V1.1.0', 'color: #007bff; font-size: 16px; font-weight: bold;');
+    console.log('%c🎓 中南民族大学自动选课助手 V1.1.1', 'color: #007bff; font-size: 16px; font-weight: bold;');
     console.log('%c✨ 现已支持7种课程类型：推荐选课、方案内选课、方案外选课、重修选课、体育选择课、通识课程选修、创新创业类选修课', 'color: #28a745; font-size: 12px;');
     console.log('%c💾 自动保存课程数据，支持持久化存储，完善UI恢复', 'color: #17a2b8; font-size: 12px;');
     console.log('%c⚠️ 本工具仅供学习交流使用，请遵守学校相关规定', 'color: #ffc107; font-size: 12px;');

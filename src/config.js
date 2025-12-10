@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version V1.1.0
+ * @version V1.1.1
  * @description 专为中南民族大学学生设计的自动化课程注册助手配置模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -77,14 +77,34 @@ export const COURSE_TYPES = {
     }
 };
 
-// API端点配置
+// API端点配置 - V1.1.1 支持校园网和VPN访问
 export const API_CONFIG = {
-    BASE_URL: 'https://xk.webvpn.scuec.edu.cn/xsxk',
+    // VPN公网访问配置
+    VPN_BASE_URL: 'https://xk.webvpn.scuec.edu.cn/xsxk',
+    // 校园网内部访问配置
+    CAMPUS_BASE_URL: 'http://xk.scuec.edu.cn/xsxk',
+    // 动态获取当前基础URL
+    get BASE_URL() {
+        return this.detectNetworkEnvironment();
+    },
     ENDPOINTS: {
         // 获取实验班信息
         GET_EXPERIMENTAL_CLASS: '/loadData.xk?method=getGljxb&jxbid=',
         // 选课操作基础端点
         COURSE_OPERATION: '/xkOper.xk?method='
+    },
+    // 检测网络环境并返回对应的基础URL
+    detectNetworkEnvironment() {
+        const currentHost = window.location.hostname;
+        const currentProtocol = window.location.protocol;
+
+        // 校园网内部访问检测
+        if (currentHost === 'xk.scuec.edu.cn' || currentHost.includes('scuec.edu.cn')) {
+            return currentProtocol === 'http:' ? this.CAMPUS_BASE_URL : this.CAMPUS_BASE_URL.replace('http://', 'https://');
+        }
+
+        // VPN公网访问（默认）
+        return this.VPN_BASE_URL;
     }
 };
 
@@ -167,10 +187,23 @@ export const UI_CONFIG = {
         fontSize: '12px',
         fontFamily: 'Arial, sans-serif'
     },
+    // 动态面板高度配置 - V1.1.1
+    PANEL_HEIGHT: {
+        // 面板最小高度（像素）
+        MIN_HEIGHT: 500,
+        // 面板最大高度（像素）
+        MAX_HEIGHT: 800,
+        // 基础UI元素高度（控制按钮、标题等）
+        BASE_HEIGHT: 150,
+        // 每个课程项的高度
+        COURSE_ITEM_HEIGHT: 60,
+        // 滚动触发阈值
+        SCROLL_THRESHOLD: 6
+    },
     // 滚动容器配置
     SCROLLABLE_CONTAINER: {
         MAX_COURSES_BEFORE_SCROLL: 4,
-        CONTAINER_HEIGHT: '250px',
+        CONTAINER_HEIGHT: 'auto', // V1.1.1 改为动态计算
         SCROLLBAR_WIDTH: '8px'
     },
     // 按钮样式

@@ -4,7 +4,7 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version V1.1.0
+ * @version V1.1.1
  * @description 专为中南民族大学学生设计的自动化课程注册助手UI控制模块
  *
  * Copyright (c) 2025 SuShuHeng
@@ -60,6 +60,9 @@ class UIController {
 
         // 初始化存储事件监听
         this.initStorageEventListeners();
+
+        // V1.1.1: 添加课程名保存防抖定时器映射
+        this.courseNameSaveTimers = new Map();
     }
 
     /**
@@ -215,8 +218,21 @@ class UIController {
                         console.warn(`${CONFIG.LOG.LOG_PREFIX} 未找到课程类型选择器`);
                     }
 
-                    // 设置课程名称（如果有的话）
-                    const courseDetail = courseDetails.find(detail => detail.id === courseId);
+                    // 设置课程名称（如果有的话）- V1.1.1 修复课程名恢复逻辑
+                    let courseDetail = null;
+
+                    // V1.1.1: 增强课程名查找逻辑，支持多种数据格式
+                    if (Array.isArray(courseDetails)) {
+                        // 尝试通过ID查找
+                        courseDetail = courseDetails.find(detail => detail && detail.id === courseId);
+
+                        // 如果没找到，尝试索引匹配（兼容旧数据格式）
+                        if (!courseDetail && courseDetails[index]) {
+                            courseDetail = courseDetails[index];
+                            console.log(`${CONFIG.LOG.LOG_PREFIX} 通过索引${index}找到课程详情:`, courseDetail);
+                        }
+                    }
+
                     console.log(`${CONFIG.LOG.LOG_PREFIX} 课程${courseId}详细信息:`, courseDetail);
 
                     if (courseDetail && courseDetail.name && courseDetail.name !== this.courseManager.localDataManager.DEFAULT_COURSE_NAME) {
@@ -272,6 +288,9 @@ class UIController {
                 // 显示恢复提示
                 this.showNotification(`已恢复${courses.length}门课程`, 'info');
 
+                // V1.1.1: 数据恢复后更新面板高度
+                this.updatePanelHeight();
+
             }, 100); // 短暂延迟确保UI完全初始化
 
         } catch (error) {
@@ -321,17 +340,53 @@ class UIController {
             }
         });
 
-        // 绑定课程名称输入框的blur事件
+        // V1.1.1: 改进的课程名称保存机制 - 支持防抖和即时保存
+        const saveCourseName = (courseId, courseName, showNotification = true) => {
+            if (courseId && this.isValidCourseId(courseId) && courseName) {
+                // 清除之前的防抖定时器
+                if (this.courseNameSaveTimers.has(courseId)) {
+                    clearTimeout(this.courseNameSaveTimers.get(courseId));
+                    this.courseNameSaveTimers.delete(courseId);
+                }
+
+                // 立即保存课程名称
+                const success = this.courseManager.localDataManager.updateCourseName(courseId, courseName);
+                if (success) {
+                    console.log(`${CONFIG.LOG.LOG_PREFIX} 课程名称已保存: ${courseId} - ${courseName}`);
+                    if (showNotification) {
+                        this.showNotification(`课程名称已更新: ${courseName}`, 'success');
+                    }
+                }
+            }
+        };
+
+        // 绑定课程名称输入框的blur事件 - 立即保存
         inputName.addEventListener('blur', async () => {
             const courseId = inputId.value.trim();
             const courseName = inputName.value.trim();
 
-            if (courseId && this.isValidCourseId(courseId) && courseName) {
-                const success = this.courseManager.localDataManager.updateCourseName(courseId, courseName);
-                if (success) {
-                    console.log(`${CONFIG.LOG.LOG_PREFIX} 课程名称已保存: ${courseId} - ${courseName}`);
-                    this.showNotification(`课程名称已更新: ${courseName}`, 'success');
+            if (courseId && courseName) {
+                saveCourseName(courseId, courseName, true);
+            }
+        });
+
+        // V1.1.1: 添加input事件监听，支持防抖保存
+        inputName.addEventListener('input', () => {
+            const courseId = inputId.value.trim();
+            const courseName = inputName.value.trim();
+
+            if (courseId && courseName) {
+                // 清除之前的防抖定时器
+                if (this.courseNameSaveTimers.has(courseId)) {
+                    clearTimeout(this.courseNameSaveTimers.get(courseId));
                 }
+
+                // 设置新的防抖定时器（500ms后保存）
+                const timer = setTimeout(() => {
+                    saveCourseName(courseId, courseName, false); // 不显示通知，避免频繁提示
+                }, 500);
+
+                this.courseNameSaveTimers.set(courseId, timer);
             }
         });
 
@@ -346,6 +401,43 @@ class UIController {
         const deleteButton = div.querySelector('button');
         if (deleteButton) {
             deleteButton.onclick = () => this.handleDeleteCourse(div, inputId);
+        }
+    }
+
+    /**
+     * V1.1.1: 处理删除课程
+     * @param {HTMLElement} courseElement - 要删除的课程元素
+     * @param {HTMLElement} inputElement - 课程ID输入框
+     */
+    handleDeleteCourse(courseElement, inputElement) {
+        try {
+            const courseId = inputElement.value.trim();
+
+            if (courseId && this.courseManager.courses.includes(courseId)) {
+                // 从courseManager中移除课程
+                const index = this.courseManager.courses.indexOf(courseId);
+                if (index > -1) {
+                    this.courseManager.courses.splice(index, 1);
+                }
+
+                // 从本地存储中删除课程
+                if (this.courseManager.localDataManager) {
+                    this.courseManager.localDataManager.removeCourse(courseId);
+                }
+            }
+
+            // 从UI中移除课程元素
+            if (courseElement && courseElement.parentNode) {
+                courseElement.parentNode.removeChild(courseElement);
+            }
+
+            // V1.1.1: 删除课程后更新面板高度
+            this.updatePanelHeight();
+
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 课程 ${courseId || ''} 已删除`);
+        } catch (error) {
+            console.error(`${CONFIG.LOG.LOG_PREFIX} 删除课程失败:`, error);
+            this.showNotification('删除课程失败，请重试', 'error');
         }
     }
 
@@ -850,6 +942,10 @@ class UIController {
         this.panel = document.createElement('div');
         Object.assign(this.panel.style, CONFIG.UI.PANEL_STYLE);
 
+        // V1.1.1: 初始化动态高度控制
+        this.panel.id = 'course-registration-panel';
+        this.updatePanelHeight();
+
         // 创建标题栏容器
         const titleBar = document.createElement('div');
         titleBar.className = 'main-title-bar';
@@ -943,6 +1039,7 @@ class UIController {
         // 课程输入容器
         this.container = document.createElement('div');
         this.container.id = 'course-container';
+        this.container.className = 'course-input-container'; // V1.1.1: 添加CSS类名
 
         // 添加第一个输入框
         this.container.appendChild(this.createCourseInput(0, CONFIG.GRAB.DEFAULT_COURSE_TYPE));
@@ -959,6 +1056,8 @@ class UIController {
         this.addButton.onclick = () => {
             const courseCount = this.container.children.length;
             this.container.appendChild(this.createCourseInput(courseCount, CONFIG.GRAB.DEFAULT_COURSE_TYPE));
+            // V1.1.1: 添加课程后更新面板高度
+            this.updatePanelHeight();
         };
 
         // 开始选课按钮
@@ -2082,6 +2181,68 @@ class UIController {
                     console.error('清理错误消息失败:', cleanupError);
                 }
             }, 3000);
+        }
+    }
+
+    /**
+     * V1.1.1: 动态更新面板高度
+     * 根据课程数量和内容动态调整面板高度在500px-800px之间
+     */
+    updatePanelHeight() {
+        if (!this.panel) return;
+
+        try {
+            const courseCount = this.container ? this.container.children.length : 1;
+            const { MIN_HEIGHT, MAX_HEIGHT, BASE_HEIGHT, COURSE_ITEM_HEIGHT } = CONFIG.UI.PANEL_HEIGHT;
+
+            // 计算理想高度：基础高度 + 课程数量 * 单个课程高度
+            const calculatedHeight = BASE_HEIGHT + (courseCount * COURSE_ITEM_HEIGHT);
+
+            // 限制在最小和最大高度之间
+            const finalHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, calculatedHeight));
+
+            // 应用高度到面板
+            this.panel.style.height = `${finalHeight}px`;
+
+            // 如果课程数量超过阈值，启用容器滚动
+            if (this.container && courseCount > CONFIG.UI.PANEL_HEIGHT.SCROLL_THRESHOLD) {
+                const containerHeight = MAX_HEIGHT - BASE_HEIGHT - 50; // 预留按钮空间
+                this.container.style.maxHeight = `${containerHeight}px`;
+                this.container.style.overflowY = 'auto';
+                this.container.style.paddingRight = '10px';
+
+                // 添加自定义滚动条样式
+                if (!document.getElementById('custom-scrollbar-styles')) {
+                    const style = document.createElement('style');
+                    style.id = 'custom-scrollbar-styles';
+                    style.textContent = `
+                        #course-registration-panel .course-input-container::-webkit-scrollbar {
+                            width: ${CONFIG.UI.SCROLLABLE_CONTAINER.SCROLLBAR_WIDTH};
+                        }
+                        #course-registration-panel .course-input-container::-webkit-scrollbar-track {
+                            background: #f1f1f1;
+                            border-radius: 4px;
+                        }
+                        #course-registration-panel .course-input-container::-webkit-scrollbar-thumb {
+                            background: #c1c1c1;
+                            border-radius: 4px;
+                        }
+                        #course-registration-panel .course-input-container::-webkit-scrollbar-thumb:hover {
+                            background: #a8a8a8;
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            } else if (this.container) {
+                // 课程数量较少时，禁用滚动
+                this.container.style.maxHeight = 'none';
+                this.container.style.overflowY = 'visible';
+                this.container.style.paddingRight = '0';
+            }
+
+            console.log(`${CONFIG.LOG.LOG_PREFIX} 面板高度已更新: ${finalHeight}px (课程数量: ${courseCount})`);
+        } catch (error) {
+            console.error(`${CONFIG.LOG.LOG_PREFIX} 更新面板高度失败:`, error);
         }
     }
 }

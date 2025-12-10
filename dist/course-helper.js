@@ -5,8 +5,8 @@
  *
  * @author SuShuHeng <https://github.com/sushuheng>
  * @license APACHE 2.0
- * @version V1.1.0
- * @description 专为中南民族大学学生设计的自动化课程注册助手，支持所有选课类型
+ * @version V1.1.1
+ * @description 专为中南民族大学学生设计的自动化课程注册助手，支持校园网/VPN访问，修复课程名保存，优化面板高度控制
  *
  * Copyright (c) 2025 SuShuHeng
  *
@@ -204,7 +204,7 @@
                 EXPERIMENTAL_CLASSES: 'scmu_experimental_classes',
                 METADATA: 'scmu_metadata'
             };
-            this.DATA_VERSION = 'V1.1.0';
+            this.DATA_VERSION = 'V1.1.1';
             this.storageAvailable = this.checkStorageAvailability();
             this.DEFAULT_COURSE_NAME = '请输入名称(可选)';
         }
@@ -1304,7 +1304,7 @@
             `;
 
             const title = document.createElement('h3');
-            title.textContent = '自动选课工具 V1.1.0';
+            title.textContent = '自动选课工具 V1.1.1';
             title.style.cssText = `
                 margin: 0;
                 color: #333;
@@ -1666,7 +1666,7 @@
 
             this.authorFooter.innerHTML = `
                 <div style="margin-bottom: 4px; font-weight: bold; color: #007bff;">
-                    📝 SCMU自动选课助手 V1.1.0
+                    📝 SCMU自动选课助手 V1.1.1
                 </div>
                 <div style="margin-bottom: 3px;">
                     <span style="color: #6c757d;">作者：</span>
@@ -1685,7 +1685,7 @@
     }
 
     // ==================== 初始化 ====================
-    console.log('%c🎓 中南民族大学自动选课助手 V1.1.0', 'color: #007bff; font-size: 16px; font-weight: bold;');
+    console.log('%c🎓 中南民族大学自动选课助手 V1.1.1', 'color: #007bff; font-size: 16px; font-weight: bold;');
     console.log('%c✨ 现已支持7种课程类型：推荐选课、方案内选课、方案外选课、重修选课、体育选择课、通识课程选修、创新创业类选修课', 'color: #28a745; font-size: 12px;');
     console.log('%c💾 自动保存课程数据，支持持久化存储，完善UI恢复', 'color: #17a2b8; font-size: 12px;');
     console.log('%c⚠️ 本工具仅供学习交流使用，请遵守学校相关规定', 'color: #ffc107; font-size: 12px;');
