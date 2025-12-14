@@ -554,4 +554,11 @@ docs/ (新增文档)
 
 ---
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=SuShuheng/SCMU_CC_Helper&type=date&legend=top-left)](https://www.star-history.com/#SuShuheng/SCMU_CC_Helper&type=date&legend=top-left)
+
+
+---
+
 *最后更新时间: 2025年12月10日 (V1.1.1)*
